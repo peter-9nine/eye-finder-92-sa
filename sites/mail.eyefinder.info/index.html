@@ -30,7 +30,12 @@
   #replyPrompt { margin-bottom: 6px; font-weight: bold; }
   #replyButtons { display: flex; gap: 8px; }
   #replyButtons button { flex: 1 1 0; min-height: 34px; padding: 4px 10px; }
-  #answered { font-style: italic; }
+  .replyCard { margin: 18px 0 4px; font: 15px Tahoma, sans-serif; background: #eef2fa; border: 1px solid #808080; border-left: 5px solid #000080; }
+  .replyHeader { padding: 6px 10px; background: #000080; color: #fff; font-weight: bold; }
+  .replyMeta { padding: 6px 10px 0; color: #444; font-size: 13px; }
+  .replyText { padding: 6px 10px 10px; font: 16px "Courier New", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .caret { display: inline-block; width: 9px; height: 1em; margin-left: 1px; vertical-align: text-bottom; background: #000; animation: blink 0.8s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
 </style>
 </head>
 <body>
@@ -54,11 +59,8 @@
     </div>
     <div id="body" hidden></div>
     <div id="replies" hidden>
-      <div id="replyChoice">
-        <div id="replyPrompt">Your answer:</div>
-        <div id="replyButtons"><button id="replyGood"></button><button id="replyBad"></button></div>
-      </div>
-      <div id="answered" hidden></div>
+      <div id="replyPrompt">Your answer:</div>
+      <div id="replyButtons"><button id="replyGood"></button><button id="replyBad"></button></div>
     </div>
   </div>
 
@@ -71,6 +73,28 @@
 
   let mails = [];
   let selectedId = null;
+  let typing = null;  // { mailId, answer, text, shown, status, timer } mientras CJ escribe
+  let audio = null;
+
+  // El tecleo es un sonido sintetizado, sin archivos: un golpe muy corto de ruido.
+  function playKey() {
+    try {
+      audio = audio || new AudioContext();
+      const length = Math.floor(audio.sampleRate * 0.018);
+      const buffer = audio.createBuffer(1, length, audio.sampleRate);
+      const samples = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) samples[i] = (Math.random() * 2 - 1) * (1 - i / length);
+      const gain = audio.createGain();
+      gain.gain.value = 0.12;
+      const source = audio.createBufferSource();
+      source.buffer = buffer;
+      source.connect(gain).connect(audio.destination);
+      source.start();
+    }
+    catch (error) {
+      // Sin sonido, el texto se sigue escribiendo.
+    }
+  }
 
   // El texto siempre entra como texto: un correo de otro mod no puede inyectar nada en la página.
   function fillBody(text) {
@@ -97,7 +121,8 @@
     for (const mail of [...mails].reverse()) {
       const row = document.createElement('tr');
       row.className = 'mail' + (mail.read ? '' : ' unread') + (mail.id === selectedId ? ' selected' : '');
-      for (const value of [mail.from, mail.subject, mail.received]) {
+      const subject = (mail.answer ? '\u21A9 ' : '') + mail.subject;
+      for (const value of [mail.from, subject, mail.received]) {
         const cell = document.createElement('td');
         cell.textContent = value;
         row.append(cell);
@@ -110,6 +135,26 @@
     byId('summary').textContent = mails.length + (mails.length === 1 ? ' message' : ' messages') + ', ' + unread + ' unread';
     document.title = unread ? 'EyeMail (' + unread + ')' : 'EyeMail';
     byId('empty').hidden = mails.length > 0;
+  }
+
+  function buildReplyCard(mail, text, title, status) {
+    const card = document.createElement('div');
+    card.className = 'replyCard';
+
+    const header = document.createElement('div');
+    header.className = 'replyHeader';
+    header.textContent = title;
+
+    const meta = document.createElement('div');
+    meta.className = 'replyMeta';
+    meta.textContent = 'From: Carl Johnson  |  To: ' + mail.from + '  |  ' + status;
+
+    const content = document.createElement('div');
+    content.className = 'replyText';
+    content.textContent = text;
+
+    card.append(header, meta, content);
+    return card;
   }
 
   function renderReader() {
@@ -127,18 +172,28 @@
     fillBody(mail.body);
     byId('body').scrollTop = 0;
 
-    const canReply = !!mail.replyKey;
-    byId('replies').hidden = !canReply;
-    if (canReply) {
-      byId('replyChoice').hidden = mail.answer !== 0;
-      byId('answered').hidden = mail.answer === 0;
-      byId('replyGood').textContent = mail.goodText;
-      byId('replyBad').textContent = mail.badText;
-      byId('answered').textContent = mail.answer ? 'You answered: ' + (mail.answer === 1 ? mail.goodText : mail.badText) : '';
+    const isTyping = typing && typing.mailId === mail.id;
+    byId('replies').hidden = !mail.replyKey || !!mail.answer || !!isTyping;
+    byId('replyGood').textContent = mail.goodText || '';
+    byId('replyBad').textContent = mail.badText || '';
+
+    if (mail.answer) {
+      byId('body').append(buildReplyCard(mail, mail.answer === 1 ? mail.goodText : mail.badText, 'Your reply', mail.answeredAt ? 'Sent: ' + mail.answeredAt : 'Sent'));
+    }
+    else if (isTyping) {
+      const card = buildReplyCard(mail, typing.text.slice(0, typing.shown), typing.status, 'Not sent yet');
+      if (typing.shown < typing.text.length) {
+        const caret = document.createElement('span');
+        caret.className = 'caret';
+        card.querySelector('.replyText').append(caret);
+      }
+      byId('body').append(card);
+      byId('body').scrollTop = byId('body').scrollHeight;
     }
   }
 
   function select(id) {
+    finishTyping();
     selectedId = id;
     const mail = mails.find((item) => item.id === id);
     if (mail && !mail.read) {
@@ -149,20 +204,61 @@
     renderReader();
   }
 
+  // CJ escribe la respuesta y luego se envía. Solo entonces cuenta como respondido.
   function answer(value) {
     const mail = mails.find((item) => item.id === selectedId);
-    if (!mail || mail.answer) return;
-    mail.answer = value;
-    mail.read = true;
-    call('/api/reply/' + mail.id + '/' + value, 'POST');
+    if (!mail || mail.answer || typing) return;
+
+    const text = value === 1 ? mail.goodText : mail.badText;
+    typing = { mailId: mail.id, answer: value, text, shown: 0, status: 'Writing your reply...', timer: null };
+    renderReader();
+    typeNextKey();
+  }
+
+  function typeNextKey() {
+    if (!typing) return;
+
+    if (typing.shown >= typing.text.length) {
+      typing.status = 'Sending...';
+      renderReader();
+      typing.timer = setTimeout(finishTyping, 450);
+      return;
+    }
+
+    typing.shown++;
+    if (typing.text[typing.shown - 1] !== ' ') playKey();
+    renderReader();
+
+    // Un ritmo humano, y sin hacer esperar demasiado con las respuestas largas.
+    const pace = Math.min(70, 3500 / typing.text.length);
+    typing.timer = setTimeout(typeNextKey, pace * (0.6 + Math.random() * 0.8));
+  }
+
+  // Si el jugador cambia de correo mientras CJ escribe, la respuesta se envía igualmente.
+  function finishTyping() {
+    if (!typing) return;
+
+    const done = typing;
+    clearTimeout(done.timer);
+    typing = null;
+
+    const mail = mails.find((item) => item.id === done.mailId);
+    if (mail && !mail.answer) {
+      mail.answer = done.answer;
+      mail.read = true;
+      call('/api/reply/' + mail.id + '/' + done.answer, 'POST');
+    }
     render();
     renderReader();
+    byId('body').scrollTop = byId('body').scrollHeight;
   }
+
   byId('replyGood').onclick = () => answer(1);
   byId('replyBad').onclick = () => answer(2);
 
   byId('remove').onclick = () => {
     if (selectedId === null) return;
+    finishTyping();
     call('/api/delete/' + selectedId, 'POST');
     mails = mails.filter((mail) => mail.id !== selectedId);
     selectedId = null;
@@ -187,10 +283,20 @@
       if (JSON.stringify(fresh) === JSON.stringify(mails)) return;
 
       const wasReading = selectedId;
+      const dateBefore = known.get(wasReading)?.answeredAt;
       mails = fresh;
       if (wasReading !== null && !mails.some((mail) => mail.id === wasReading)) selectedId = null;
       render();
-      if (selectedId !== wasReading) renderReader();
+      const scroll = byId('body').scrollTop;
+      const dateNow = mails.find((mail) => mail.id === selectedId)?.answeredAt;
+      if (selectedId !== wasReading) {
+        renderReader();
+      }
+      else if (dateNow !== dateBefore && !typing) {
+        // La fecha real llega del juego justo después de enviar.
+        renderReader();
+        byId('body').scrollTop = scroll;
+      }
     }
     catch (error) {
       // El archivo se puede estar sustituyendo justo ahora: se reintenta en la siguiente vuelta.

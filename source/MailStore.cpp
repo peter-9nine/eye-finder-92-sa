@@ -43,6 +43,7 @@ std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std
 			item["goodScript"] = mail.goodScript;
 			item["badScript"] = mail.badScript;
 			item["answer"] = mail.answer;
+			item["answeredAt"] = mail.answeredAt;
 		}
 		list.push_back(std::move(item));
 	}
@@ -95,12 +96,13 @@ uint32_t MailStore::AddWithReplies(std::string from, std::string subject, std::s
 	return id;
 }
 
-bool MailStore::Answer(uint32_t id, int answer, std::string& key, std::string& script) {
+bool MailStore::Answer(uint32_t id, int answer, std::string& key, std::string& script, std::string answeredAt) {
 	if (answer != 1 && answer != 2) return false;
 
 	for (Mail& mail : mails_) {
 		if (mail.id == id && !mail.replyKey.empty() && mail.answer == 0) {
 			mail.answer = answer;
+			mail.answeredAt = std::move(answeredAt);
 			mail.read = true;
 			replies_[mail.replyKey] = answer;
 			key = mail.replyKey;
@@ -167,6 +169,7 @@ bool MailStore::LoadFrom(const std::filesystem::path& path) {
 			entry.goodScript = item.value("goodScript", "");
 			entry.badScript = item.value("badScript", "");
 			entry.answer = item.value("answer", 0);
+			entry.answeredAt = item.value("answeredAt", "");
 			loaded.push_back(std::move(entry));
 		}
 

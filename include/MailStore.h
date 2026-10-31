@@ -21,6 +21,7 @@ struct Mail {
 	std::string goodScript;
 	std::string badScript;
 	int answer = 0;  // 0 sin responder, 1 buena, 2 mala
+	std::string answeredAt;
 };
 
 class MailStore {
@@ -34,7 +35,7 @@ public:
 		std::string replyKey, std::string goodText, std::string badText, std::string goodScript, std::string badScript);
 
 	// Devuelve true solo la primera vez: una respuesta no se puede cambiar. Si tiene script, lo deja en script.
-	bool Answer(uint32_t id, int answer, std::string& key, std::string& script);
+	bool Answer(uint32_t id, int answer, std::string& key, std::string& script, std::string answeredAt = {});
 	bool KnowsReplyKey(const std::string& key) const { return replies_.count(key) != 0; }
 	const std::map<std::string, int>& Replies() const { return replies_; }
 	bool MarkRead(uint32_t id);

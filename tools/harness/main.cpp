@@ -515,8 +515,10 @@ int wmain(int argc, wchar_t** argv) {
 	RunWithMail(800);
 	Shot("17b_mail_replies");
 	Click(kReplyGood);
-	RunWithMail(800);
-	Shot("17c_mail_answered");
+	Shot("17c_cj_typing");
+	Expect("replies: not sent while typing", gStore.Replies().at("harness_key") == 0);
+	RunWithMail(2500);
+	Shot("17c2_mail_answered");
 	{
 		const Mail* answered = nullptr;
 		for (const Mail& mail : gStore.Mails()) {
@@ -537,6 +539,29 @@ int wmain(int argc, wchar_t** argv) {
 	{
 		std::string siteScript;
 		Expect("web button: script requested", gClient.TakeSiteScript(siteScript) && siteScript == "www.eyefinder.info/hello");
+	}
+
+	// Lo que promete la FAQ: un archivo nuevo en un sitio existente carga sin reiniciar, y F5 recoge los cambios.
+	{
+		const std::filesystem::path page = std::filesystem::path(helper).parent_path() / L"sites" / L"www.eyefinder.info" / L"f5test.html";
+		const auto writePage = [&page](const char* color) {
+			std::ofstream file(page, std::ios::binary | std::ios::trunc);
+			file << "<body style='margin:0;background:" << color << "'></body>";
+		};
+		writePage("#ff0000");
+		GoTo("www.eyefinder.info/f5test.html", 1000);
+		Shot("17e_new_file");
+		ExpectPixel("new file loads without restarting", { 640, 400 }, 0xFF0000);
+		writePage("#00ff00");
+		gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_F5 });
+		gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_F5 });
+		Run(1000);
+		Shot("17f_after_f5");
+		ExpectPixel("F5 picks up the edited file", { 640, 400 }, 0x00FF00);
+		std::error_code removeError;
+		std::filesystem::remove(page, removeError);
+		GoTo("www.eyefinder.info/tests.html", 800);
+		Shot("17g_media_formats");
 	}
 
 	// El busca, sobre la página. Tiene que acabar solo.

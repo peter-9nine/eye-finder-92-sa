@@ -25,6 +25,7 @@
     <p><button id="runCleo">Run CLEO script</button> <span id="cleoResult"></span></p>
     <p>Reading the inbox from another site: <span id="crossSite">checking</span></p>
     <p>Real internet from this page: fetch <span id="netFetch">checking</span>, WebSocket <span id="netSocket">checking</span>, WebRTC <span id="netRtc">checking</span></p>
+    <p id="media"></p>
   </section>
   <section>
     <h2>Animation test</h2>
@@ -70,6 +71,11 @@ let clicks = 0;
     if (event.candidate && event.candidate.candidate.includes(' srflx ')) byId('netRtc').textContent = 'reached';
   };
   peer.createOffer().then((offer) => peer.setLocalDescription(offer));
+
+  // Lo que documenta la FAQ para quienes crean sitios.
+  const probe = document.createElement('video');
+  const formats = { WebM: 'video/webm; codecs="vp9,opus"', Ogg: 'audio/ogg; codecs="opus"', MP3: 'audio/mpeg', 'H.264': 'video/mp4; codecs="avc1.42E01E"', AAC: 'audio/mp4; codecs="mp4a.40.2"' };
+  byId('media').textContent = 'Media: ' + Object.entries(formats).map(([name, type]) => name + '=' + (probe.canPlayType(type) || 'no')).join(', ');
 
   byId('dropdown').onchange = (e) => { byId('picked').textContent = e.target.value; };
 

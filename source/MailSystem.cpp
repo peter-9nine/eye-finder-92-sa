@@ -173,7 +173,7 @@ void MailSystem::HandleBrowserOperations() {
 			const int answer = operation.kind == ef::MailOpKind::ReplyGood ? EF_REPLY_GOOD : EF_REPLY_BAD;
 			std::string key;
 			std::string script;
-			if (store_.Answer(operation.id, answer, key, script)) {
+			if (store_.Answer(operation.id, answer, key, script, GameDate())) {
 				changed = true;
 				api::SetReply(key, answer);
 				if (!script.empty()) RunCleoScript(script);

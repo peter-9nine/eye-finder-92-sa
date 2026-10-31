@@ -23,6 +23,8 @@ A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https:
 
 ## Adding a site
 
+See the [FAQ for site creators](api/FAQ.md) for the details, including how to use CLEO scripts from a page.
+
 Create a folder named after the address in `sites\`, with normal web files in it:
 
 ```
