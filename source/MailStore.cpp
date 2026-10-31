@@ -13,6 +13,7 @@ using json = nlohmann::json;
 
 constexpr int kFileVersion = 1;
 constexpr size_t kMaxMails = 200;
+constexpr size_t kMaxPagerEntries = 10;
 
 // Escribe a un temporal y lo sustituye, para que nadie lea nunca un archivo a medias.
 bool WriteAtomically(const std::filesystem::path& path, const std::string& text) {
@@ -29,7 +30,12 @@ bool WriteAtomically(const std::filesystem::path& path, const std::string& text)
 	return MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 }
 
-std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std::map<std::string, int>& replies, const std::map<std::string, std::string>& values) {
+std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std::map<std::string, int>& replies, const std::map<std::string, std::string>& values, const std::vector<PagerEntry>& pagerEntries) {
+	json pager = json::array();
+	for (const PagerEntry& entry : pagerEntries) {
+		pager.push_back({ { "sender", entry.sender }, { "text", entry.text }, { "received", entry.received } });
+	}
+
 	json list = json::array();
 	for (const Mail& mail : mails) {
 		json item = {
@@ -49,7 +55,7 @@ std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std
 	}
 
 	// Un objeto por sistema: otras funciones del mod podrán guardar sus datos aquí.
-	const json root = { { "version", kFileVersion }, { "mail", { { "nextId", nextId }, { "mails", list }, { "replies", replies } } }, { "values", values } };
+	const json root = { { "version", kFileVersion }, { "mail", { { "nextId", nextId }, { "mails", list }, { "replies", replies } } }, { "values", values }, { "pager", pager } };
 	// Otro mod puede mandar UTF-8 no válido: se sustituye en lugar de fallar.
 	return root.dump(1, '\t', false, json::error_handler_t::replace);
 }
@@ -60,6 +66,7 @@ void MailStore::Clear() {
 	mails_.clear();
 	replies_.clear();
 	values_.clear();
+	pagerEntries_.clear();
 	nextId_ = 1;
 	dirty_ = true;
 }
@@ -115,6 +122,12 @@ bool MailStore::Answer(uint32_t id, int answer, std::string& key, std::string& s
 	return false;
 }
 
+void MailStore::AddPagerEntry(std::string sender, std::string text, std::string received) {
+	pagerEntries_.push_back({ std::move(sender), std::move(text), std::move(received) });
+	if (pagerEntries_.size() > kMaxPagerEntries) pagerEntries_.erase(pagerEntries_.begin());
+	dirty_ = true;
+}
+
 void MailStore::SetValue(const std::string& key, const std::string& value) {
 	auto found = values_.find(key);
 	if (found != values_.end() && found->second == value) return;
@@ -147,11 +160,11 @@ int MailStore::UnreadCount() const {
 
 void MailStore::FlushSession() {
 	if (!dirty_ || sessionPath_.empty()) return;
-	if (WriteAtomically(sessionPath_, Serialize(mails_, nextId_, replies_, values_))) dirty_ = false;
+	if (WriteAtomically(sessionPath_, Serialize(mails_, nextId_, replies_, values_, pagerEntries_))) dirty_ = false;
 }
 
 bool MailStore::SaveTo(const std::filesystem::path& path) const {
-	return WriteAtomically(path, Serialize(mails_, nextId_, replies_, values_));
+	return WriteAtomically(path, Serialize(mails_, nextId_, replies_, values_, pagerEntries_));
 }
 
 bool MailStore::LoadFrom(const std::filesystem::path& path) {
@@ -188,6 +201,13 @@ bool MailStore::LoadFrom(const std::filesystem::path& path) {
 		mails_ = std::move(loaded);
 		replies_ = std::move(replies);
 		values_ = root.value("values", std::map<std::string, std::string>{});
+
+		pagerEntries_.clear();
+		if (root.contains("pager")) {
+			for (const json& item : root.at("pager")) {
+				pagerEntries_.push_back({ item.value("sender", ""), item.value("text", ""), item.value("received", "") });
+			}
+		}
 		nextId_ = nextId;
 		dirty_ = true;
 		return true;

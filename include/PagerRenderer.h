@@ -12,6 +12,10 @@ std::string ToPlainAscii(const std::string& utf8);
 class PagerRenderer {
 public:
 	void Show(const std::string& sender, const std::string& text);
+
+	// Desde la memoria: sin vibrar. Si ya está en pantalla, cambia de mensaje sin volver a subir.
+	void ShowFromMemory(const std::string& sender, const std::string& text, const std::string& label);
+	void Close();
 	void Advance(unsigned int milliseconds);
 	void Draw(IDirect3DDevice9* device, float screenWidth, float screenHeight);
 
@@ -21,7 +25,11 @@ public:
 	static void PlayBeep();
 
 private:
+	void SetMessage(const std::string& sender, const std::string& text);
+
 	std::string header_;
+	std::string label_;
+	bool isNew_ = true;
 	std::vector<std::string> rows_;
 	unsigned int elapsed_ = 0;
 	unsigned int holdTime_ = 0;

@@ -24,6 +24,12 @@ struct Mail {
 	std::string answeredAt;
 };
 
+struct PagerEntry {
+	std::string sender;
+	std::string text;
+	std::string received;
+};
+
 class MailStore {
 public:
 	// El archivo de sesión refleja siempre la partida en curso; el helper lo lee de ahí.
@@ -39,6 +45,10 @@ public:
 	bool KnowsReplyKey(const std::string& key) const { return replies_.count(key) != 0; }
 	const std::map<std::string, int>& Replies() const { return replies_; }
 	bool MarkRead(uint32_t id);
+
+	// La memoria del busca, de más antiguo a más reciente.
+	void AddPagerEntry(std::string sender, std::string text, std::string received);
+	const std::vector<PagerEntry>& PagerEntries() const { return pagerEntries_; }
 
 	// Valores compartidos con mods y páginas: se guardan con la partida, como el correo.
 	void SetValue(const std::string& key, const std::string& value);
@@ -62,6 +72,7 @@ private:
 	// Sobrevive a borrar el correo: el mod que lo envió sigue pudiendo preguntar.
 	std::map<std::string, int> replies_;
 	std::map<std::string, std::string> values_;
+	std::vector<PagerEntry> pagerEntries_;
 	uint32_t nextId_ = 1;
 	bool dirty_ = true;
 };

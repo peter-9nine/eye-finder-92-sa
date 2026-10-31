@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 #include "BrowserOverlay.h"
+#include "KeyConfig.h"
 #include "MailStore.h"
 #include "PagerRenderer.h"
 
@@ -29,6 +30,8 @@ private:
 	void HandleBrowserOperations();
 	void RunCleoScript(const std::string& path);
 	void SyncReplies();
+	bool HandleKey(unsigned int key, bool repeat);
+	void ShowMemoryEntry();
 	void PublishGameState();
 	void ShowNextText();
 	void ShowNextPage();
@@ -45,6 +48,9 @@ private:
 	int newMailToAnnounce_ = 0;
 	std::deque<std::string> texts_;
 	std::deque<PagerMessage> pages_;
+	KeyConfig keys_;
+	bool memoryOpen_ = false;
+	size_t memoryIndex_ = 0;  // 0 es el mensaje más reciente.
 	DWORD lastDraw_ = 0;
 	DWORD lastTextShown_ = 0;
 	DWORD lastStatePublished_ = 0;

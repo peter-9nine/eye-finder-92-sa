@@ -18,6 +18,7 @@
 
 #include "BrowserClient.h"
 #include "EyeFinderApi.h"
+#include "KeyConfig.h"
 #include "MailStore.h"
 #include "OverlayRenderer.h"
 #include "PagerRenderer.h"
@@ -317,6 +318,33 @@ void TestMailFiles() {
 	Expect("files: mails kept", loaded.Mails().size() == 2 && loaded.UnreadCount() == 1);
 	Expect("files: text kept", loaded.Mails()[0].from == "From \xC3\xB1" && loaded.Mails()[0].body == "Body\nwith lines");
 	Expect("files: new ids don't collide", loaded.Add("x", "x", "x", "x") == 3);
+
+	MailStore memory;
+	for (int i = 1; i <= 12; ++i) memory.AddPagerEntry("Sender", "Message " + std::to_string(i), "Day 1, 10:00");
+	Expect("pager memory: keeps the last 10", memory.PagerEntries().size() == 10 && memory.PagerEntries().back().text == "Message 12" && memory.PagerEntries().front().text == "Message 3");
+	Expect("pager memory: save", memory.SaveTo(folder / L"GTASAsf6.json"));
+	MailStore recalled;
+	Expect("pager memory: load", recalled.LoadFrom(folder / L"GTASAsf6.json") && recalled.PagerEntries().size() == 10 && recalled.PagerEntries().back().text == "Message 12");
+	memory.Clear();
+	Expect("pager memory: new game starts empty", memory.PagerEntries().empty());
+
+	Expect("keys: names", ParseKeyName("F6") == VK_F6 && ParseKeyName("pageup") == VK_PRIOR && ParseKeyName(" M ") == 'M' && ParseKeyName("7") == '7' && ParseKeyName("Numpad3") == VK_NUMPAD3 && ParseKeyName("None") == 0);
+	Expect("keys: unknown names", ParseKeyName("F13") < 0 && ParseKeyName("banana") < 0 && ParseKeyName("") < 0);
+	{
+		const std::wstring iniPath = (folder / L"keys.ini").wstring();
+		std::string problems;
+		const KeyConfig defaults = LoadKeyConfig(iniPath, problems);
+		Expect("keys: creates the file", std::filesystem::exists(iniPath) && problems.empty() && defaults.pagerOpen == VK_F6);
+		const KeyConfig fromFile = LoadKeyConfig(iniPath, problems);
+		Expect("keys: reads its own file", problems.empty() && fromFile.browser == VK_F8 && fromFile.pagerOlder == VK_PRIOR && fromFile.pagerNewer == VK_NEXT);
+		{
+			std::ofstream custom(iniPath, std::ios::binary | std::ios::trunc);
+			custom << "[Keys]\r\nPagerOpen=F7\r\nPagerOlder=banana\r\nPagerNewer=None\r\n";
+		}
+		problems.clear();
+		const KeyConfig edited = LoadKeyConfig(iniPath, problems);
+		Expect("keys: edits apply, and a typo keeps the default", edited.pagerOpen == VK_F7 && edited.pagerOlder == VK_PRIOR && edited.pagerNewer == 0 && !problems.empty());
+	}
 
 	MailStore replying;
 	replying.AddWithReplies("a", "b", "c", "d", "key1", "Good", "Bad", "g.cs", "b.cs");
@@ -710,6 +738,19 @@ int wmain(int argc, wchar_t** argv) {
 	Run(1600);
 	Shot("20_pager_no_sender");
 	while (gPager.IsBusy() && GetTickCount() - pagerStart < 60000) Run(100);
+
+	// La memoria: sube, cambia de mensaje sin volver a subir, sigue pasando páginas sola, y se guarda.
+	gPager.ShowFromMemory("Cesar", "Meet me at the garage in Little Mexico. Bring the car and come alone, ese.", "D568 13:51 1/2");
+	Run(600);
+	Shot("21_pager_memory");
+	Run(2800);
+	Shot("21b_pager_memory_next_page");
+	gPager.ShowFromMemory("Sweet", "Get back here.", "D568 12:07 2/2");
+	Run(100);
+	Shot("21c_pager_memory_older");
+	gPager.Close();
+	Run(500);
+	Expect("pager: closing puts it away", !gPager.IsBusy());
 
 	// Ocultar y mostrar (menú de pausa, F8) producen un fotograma nuevo.
 	gClient.Send({ ef::EventType::Hide });

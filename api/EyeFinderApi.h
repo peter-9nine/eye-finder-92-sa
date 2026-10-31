@@ -42,7 +42,8 @@ typedef int(__cdecl* EF_SendEmail_t)(const char* from, const char* subject, cons
 typedef int(__cdecl* EF_Notify_t)(const char* text);
 
 // int EF_Page(const char* sender, const char* text)
-// Sends a message to the pager, without an email. Returns 1 if accepted.
+// Sends a message to the pager, without an email. The pager remembers its last 10 messages,
+// which the player can bring back up. Returns 1 if accepted.
 typedef int(__cdecl* EF_Page_t)(const char* sender, const char* text);
 
 // int EF_GetUnreadCount(void)

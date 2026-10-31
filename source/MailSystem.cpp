@@ -30,6 +30,13 @@ void MailSystem::Initialize(BrowserOverlay& overlay) {
 	overlay_ = &overlay;
 	saveFolder_ = SaveDataDirectory();
 	store_.SetSessionPath(SessionSavePath());
+
+	std::string problems;
+	keys_ = LoadKeyConfig(PluginDirectory() + L"\\EyeFinder92SA.ini", problems);
+	if (!problems.empty()) Log(problems);
+	overlay.SetToggleKey(keys_.browser);
+	overlay.SetKeyFilter([this](unsigned int key, bool repeat) { return HandleKey(key, repeat); });
+
 	OnNewGame();
 }
 
@@ -45,6 +52,8 @@ void MailSystem::OnNewGame() {
 	newMailToAnnounce_ = 0;
 	texts_.clear();
 	pages_.clear();
+	memoryOpen_ = false;
+	memoryIndex_ = 0;
 	store_.FlushSession();
 	api::ClearReplies();
 	api::ReplaceValues({});
@@ -148,7 +157,10 @@ void MailSystem::HandleApiRequests() {
 			changed = true;
 
 			if (request.notify == EF_NOTIFY_TEXT) ++newMailToAnnounce_;
-			else if (request.notify == EF_NOTIFY_PAGER) pages_.push_back({ sender, "NEW EMAIL: " + subject });
+			else if (request.notify == EF_NOTIFY_PAGER) {
+				pages_.push_back({ sender, "NEW EMAIL: " + subject });
+				store_.AddPagerEntry(sender, "NEW EMAIL: " + subject, GameDate());
+			}
 			break;
 		}
 		case api::RequestKind::RunScript:
@@ -158,6 +170,7 @@ void MailSystem::HandleApiRequests() {
 			texts_.push_back(ToPlainAscii(request.body));
 			break;
 		case api::RequestKind::Page:
+			store_.AddPagerEntry(request.from, request.body, GameDate());
 			pages_.push_back({ std::move(request.from), std::move(request.body) });
 			break;
 		}
@@ -244,7 +257,61 @@ void MailSystem::ShowNextText() {
 	else texts_.pop_front();
 }
 
+void MailSystem::ShowMemoryEntry() {
+	const auto& entries = store_.PagerEntries();
+	if (entries.empty()) {
+		pager_.ShowFromMemory("", "NO MESSAGES", "");
+		return;
+	}
+
+	// "Day 568, 13:51" no cabe junto a la posición.
+	const PagerEntry& entry = entries[entries.size() - 1 - memoryIndex_];
+	std::string when = entry.received;
+	if (when.rfind("Day ", 0) == 0) when = "D" + when.substr(4);
+	const size_t comma = when.find(", ");
+	if (comma != std::string::npos) when.replace(comma, 2, " ");
+
+	pager_.ShowFromMemory(entry.sender, entry.text, when + " " + std::to_string(memoryIndex_ + 1) + "/" + std::to_string(entries.size()));
+}
+
+// Lo llama el procedimiento de ventana, en el mismo hilo que el juego. Devuelve true si la tecla era del busca.
+bool MailSystem::HandleKey(unsigned int key, bool repeat) {
+	if (key == 0 || !GameCanShowNotifications()) return false;
+
+	if (key == keys_.pagerOpen) {
+		// Con el ordenador abierto, una letra o un número son para escribir.
+		const bool printable = (key >= '0' && key <= '9') || (key >= 'A' && key <= 'Z');
+		if (overlay_->IsOpen() && printable) return false;
+		if (repeat) return true;
+
+		if (memoryOpen_ && pager_.IsBusy()) {
+			pager_.Close();
+			memoryOpen_ = false;
+			return true;
+		}
+
+		memoryOpen_ = true;
+		memoryIndex_ = 0;
+		ShowMemoryEntry();
+		return true;
+	}
+
+	// Las teclas de avance solo son del busca mientras está en pantalla.
+	if (!memoryOpen_ || !pager_.IsBusy()) return false;
+	if (key != keys_.pagerOlder && key != keys_.pagerNewer) return false;
+	if (repeat) return true;
+
+	const size_t count = store_.PagerEntries().size();
+	if (key == keys_.pagerOlder && memoryIndex_ + 1 < count) ++memoryIndex_;
+	else if (key == keys_.pagerNewer && memoryIndex_ > 0) --memoryIndex_;
+
+	// Aunque no haya más mensajes, seguir pulsando mantiene el busca abierto.
+	ShowMemoryEntry();
+	return true;
+}
+
 void MailSystem::ShowNextPage() {
+	if (memoryOpen_ && !pager_.IsBusy()) memoryOpen_ = false;
 	if (pages_.empty() || pager_.IsBusy() || !GameCanShowNotifications()) return;
 
 	pager_.Show(pages_.front().sender, pages_.front().text);

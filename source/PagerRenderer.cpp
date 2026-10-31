@@ -223,14 +223,33 @@ std::string ToPlainAscii(const std::string& utf8) {
 }
 
 void PagerRenderer::Show(const std::string& sender, const std::string& text) {
+	SetMessage(sender, text);
+	label_.clear();
+	isNew_ = true;
+	elapsed_ = 0;
+	busy_ = true;
+}
+
+void PagerRenderer::ShowFromMemory(const std::string& sender, const std::string& text, const std::string& label) {
+	const bool alreadyUp = busy_ && elapsed_ >= kSlideMs && elapsed_ <= kSlideMs + holdTime_;
+	SetMessage(sender, text);
+	label_ = ToUpper(label);
+	isNew_ = false;
+	elapsed_ = alreadyUp ? kSlideMs : 0;
+	busy_ = true;
+}
+
+void PagerRenderer::Close() {
+	if (busy_ && elapsed_ < kSlideMs + holdTime_) elapsed_ = kSlideMs + holdTime_;
+}
+
+void PagerRenderer::SetMessage(const std::string& sender, const std::string& text) {
 	const std::string name = ToUpper(ToPlainAscii(sender));
 	header_ = name.empty() ? "NEW MESSAGE" : ("FROM " + name).substr(0, kColumns);
 	rows_ = WrapWords(ToUpper(ToPlainAscii(text)), kColumns);
 
 	const unsigned int pages = static_cast<unsigned int>((rows_.size() + kBodyRows - 1) / kBodyRows);
 	holdTime_ = (std::max)(kMinimumHoldMs, pages * kPageMs);
-	elapsed_ = 0;
-	busy_ = true;
 }
 
 void PagerRenderer::Advance(unsigned int milliseconds) {
@@ -266,7 +285,7 @@ void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float scre
 	const float y = std::floor(screenHeight - (height + margin) * visibility);
 
 	// Vibra al recibir, como en el cinturón.
-	if (elapsed_ > kSlideMs && elapsed_ < kSlideMs + kVibrateMs) {
+	if (isNew_ && elapsed_ > kSlideMs && elapsed_ < kSlideMs + kVibrateMs) {
 		x += ((elapsed_ / 30) % 2 == 0) ? 2.0f * unit : -2.0f * unit;
 	}
 
@@ -279,9 +298,16 @@ void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float scre
 
 	// Marca y luz de aviso.
 	batch.Text("WHIZ", x + 16 * unit, y + 11 * unit, (std::max)(1.0f, std::floor(dot * 0.67f)), kBrandColor);
-	const bool ledOn = (elapsed_ / 350) % 2 == 0;
+	const bool ledOn = isNew_ && (elapsed_ / 350) % 2 == 0;
 	const float ledRight = x + width - 16 * unit;
 	batch.Rounded(ledRight - 14 * unit, y + 12 * unit, ledRight, y + 22 * unit, 3 * unit, ledOn ? kLedOn : kLedOff);
+
+	// De qué mensaje de la memoria se trata.
+	if (!label_.empty()) {
+		const float labelDot = (std::max)(1.0f, std::floor(dot * 0.67f));
+		const float labelWidth = label_.size() * 6.0f * labelDot;
+		batch.Text(label_, std::floor(ledRight - 24 * unit - labelWidth), y + 11 * unit, labelDot, kBrandColor);
+	}
 
 	// Pantalla
 	const float screenLeft = x + 14 * unit;

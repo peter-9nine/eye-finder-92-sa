@@ -6,7 +6,6 @@ namespace {
 
 BrowserOverlay* gOverlay = nullptr;
 
-constexpr UINT kToggleKey = VK_F8;
 constexpr DWORD kGameFadeMs = 1100;
 constexpr DWORD kBrowserFadeInMs = 400;
 constexpr DWORD kBrowserFadeOutMs = 350;
@@ -55,7 +54,12 @@ LRESULT CALLBACK BrowserOverlay::WindowProc(HWND window, UINT message, WPARAM wP
 
 	// El menú de pausa es del juego: mientras esté abierto, no tocamos nada.
 	if (!PauseMenuActive()) {
-		if (message == WM_KEYDOWN && wParam == kToggleKey) {
+		if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && self.keyFilter_ &&
+			self.keyFilter_(static_cast<unsigned int>(wParam), (lParam & (1 << 30)) != 0)) {
+			return 0;
+		}
+
+		if (message == WM_KEYDOWN && wParam == self.toggleKey_) {
 			if (!(lParam & (1 << 30))) self.togglePending_ = true;
 			if (self.phase_ != Phase::Closed) return 0;
 		}

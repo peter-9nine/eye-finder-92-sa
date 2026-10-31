@@ -3,10 +3,16 @@
 #include "BrowserClient.h"
 #include "OverlayRenderer.h"
 
+#include <functional>
+
 // Conecta el navegador con el juego: abrir y cerrar, entrada, controles, menú de pausa y dibujo.
 class BrowserOverlay {
 public:
 	void InstallWindowHook();
+
+	void SetToggleKey(unsigned int key) { toggleKey_ = key; }
+	// Recibe (tecla, es una repetición) y devuelve true si la tecla ya no debe llegar a nadie más.
+	void SetKeyFilter(std::function<bool(unsigned int, bool)> filter) { keyFilter_ = std::move(filter); }
 	void RemoveWindowHook();
 
 	void Update();
@@ -50,6 +56,8 @@ private:
 
 	HWND window_ = nullptr;
 	WNDPROC originalProc_ = nullptr;
+	unsigned int toggleKey_ = VK_F8;
+	std::function<bool(unsigned int, bool)> keyFilter_;
 
 	Phase phase_ = Phase::Closed;
 	DWORD phaseStart_ = 0;

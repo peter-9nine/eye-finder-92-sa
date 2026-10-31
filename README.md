@@ -14,6 +14,8 @@ A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https:
 | Key | Action |
 |---|---|
 | F8 | Open or close the computer |
+| F6 | Bring up the pager with the latest message, or put it away |
+| Page Up, Page Down | While the pager is up, go to older and newer messages |
 | Esc | Open the game's pause menu |
 | Ctrl+T, Ctrl+W | New tab, close tab |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next tab, previous tab |
@@ -22,6 +24,10 @@ A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https:
 | Ctrl+0 | Reset the zoom |
 | F5 | Reload |
 | Alt+Left, Alt+Right | Back, forward |
+
+To change F8, F6, Page Up or Page Down, edit `EyeFinder92SA.ini` in the mod folder and restart the game. The file is created the first time the game starts, and it lists the key names you can use.
+
+The pager remembers its last 10 messages, saved with each saved game. Messages from `EF_Page` and emails announced on the pager are both remembered.
 
 ## Adding a site
 
