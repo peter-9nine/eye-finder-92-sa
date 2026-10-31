@@ -104,7 +104,15 @@ CefRefPtr<CefResourceHandler> HandleMailApi(const std::string& path, CefRefPtr<C
 
 	ef::MailOpKind kind;
 	std::string idText;
-	if (path.rfind("/api/read/", 0) == 0) {
+	if (path.rfind("/api/reply/", 0) == 0) {
+		// /api/reply/<id>/<1 buena o 2 mala>
+		const size_t slash = path.rfind('/');
+		const std::string answer = path.substr(slash + 1);
+		if (answer != "1" && answer != "2") return JsonResponse(400, "{}");
+		kind = answer == "1" ? ef::MailOpKind::ReplyGood : ef::MailOpKind::ReplyBad;
+		idText = path.substr(11, slash - 11);
+	}
+	else if (path.rfind("/api/read/", 0) == 0) {
 		kind = ef::MailOpKind::MarkRead;
 		idText = path.substr(10);
 	}
@@ -125,6 +133,42 @@ CefRefPtr<CefResourceHandler> HandleMailApi(const std::string& path, CefRefPtr<C
 	return JsonResponse(200, "{}");
 }
 
+// Lo que un sitio local puede pedirle al juego. Las webs reales no llegan aquí: estos dominios solo
+// se sirven desde el disco, y la cabecera propia impide que otro origen haga la petición.
+CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs::path& root, const std::string& path, CefRefPtr<CefRequest> request) {
+	if (path == "/_game/sa.js") {
+		static const char kScript[] =
+			"window.sa = { runScript(name) { return fetch('/_game/script/' + encodeURIComponent(name), "
+			"{ method: 'POST', headers: { 'X-EyeFinder': '1' } }).then((response) => response.ok); } };\n";
+		CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForData(const_cast<char*>(kScript), sizeof(kScript) - 1);
+		return new CefStreamResourceHandler("text/javascript", stream);
+	}
+
+	if (request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
+
+	if (path.rfind("/_game/script/", 0) == 0 && request->GetMethod().ToString() == "POST") {
+		// Solo nombres simples y solo de la carpeta scripts del propio sitio.
+		const std::string name = path.substr(14);
+		const bool valid = !name.empty() && name.size() <= 64 &&
+			name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == std::string::npos;
+		std::error_code error;
+		if (!valid || !fs::is_regular_file(root / L"scripts" / (name + ".efs"), error)) return JsonResponse(404, "{}");
+
+		const std::string entry = domain + "/" + name;
+		if (entry.size() >= ef::kSiteScriptNameSize) return JsonResponse(400, "{}");
+
+		const uint32_t write = gHeader->siteScriptWrite.load(std::memory_order_relaxed);
+		if (write - gHeader->siteScriptRead.load(std::memory_order_acquire) >= ef::kSiteScriptRingSize) return JsonResponse(503, "{}");
+		char* slot = gHeader->siteScripts[write % ef::kSiteScriptRingSize];
+		std::memset(slot, 0, ef::kSiteScriptNameSize);
+		std::memcpy(slot, entry.data(), entry.size());
+		gHeader->siteScriptWrite.store(write + 1, std::memory_order_release);
+		return JsonResponse(200, "{}");
+	}
+
+	return JsonResponse(404, "{}");
+}
+
 class SiteHandlerFactory : public CefSchemeHandlerFactory {
 public:
 	SiteHandlerFactory(fs::path root, bool isMailSite) : root_(std::move(root)), isMailSite_(isMailSite) {}
@@ -136,6 +180,7 @@ public:
 		// Un sitio no puede salir de su carpeta.
 		const std::string escaped = CefString(&parts.path).ToString();
 		if (isMailSite_ && escaped.rfind("/api/", 0) == 0) return HandleMailApi(escaped, request);
+		if (escaped.rfind("/_game/", 0) == 0) return HandleGameApi(root_.filename().string(), root_, escaped, request);
 
 		const std::wstring decoded = CefURIDecode(escaped, true, UU_SPACES).ToWString();
 		fs::path relative = fs::path(decoded).relative_path().lexically_normal();

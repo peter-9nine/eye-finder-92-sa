@@ -5,7 +5,7 @@
 
 namespace api {
 
-enum class RequestKind { Email, Text, Page };
+enum class RequestKind { Email, Text, Page, RunScript };
 
 struct Request {
 	RequestKind kind = RequestKind::Text;
@@ -13,10 +13,21 @@ struct Request {
 	std::string subject;
 	std::string body;     // Cuerpo del correo o texto del aviso.
 	int notify = 0;
+
+	// Correos con respuesta.
+	std::string replyKey;
+	std::string goodText;
+	std::string badText;
+	std::string goodScript;
+	std::string badScript;
 };
 
 // Solo desde el hilo del juego.
 std::vector<Request> Drain();
 void SetUnreadCount(int count);
+
+// Lo que ha respondido el jugador en esta partida, para EF_GetReply desde cualquier hilo.
+void ClearReplies();
+void SetReply(const std::string& key, int answer);
 
 }  // namespace api

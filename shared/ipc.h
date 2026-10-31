@@ -8,11 +8,13 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 3;
+constexpr uint32_t kProtocol = 4;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
 constexpr uint32_t kMailOpRingSize = 64;
+constexpr uint32_t kSiteScriptRingSize = 8;
+constexpr uint32_t kSiteScriptNameSize = 200;
 constexpr uint32_t kHeaderSize = 64 * 1024;
 
 // Mismos valores que EVENTFLAG_* de CEF.
@@ -49,7 +51,7 @@ struct Event {
 static_assert(sizeof(Event) == 24);
 
 // Lo que hace el jugador en la bandeja. Los correos son del plugin: el helper solo los lee.
-enum class MailOpKind : uint32_t { MarkRead, Remove };
+enum class MailOpKind : uint32_t { MarkRead, Remove, ReplyGood, ReplyBad };
 
 struct MailOp {
 	MailOpKind kind;
@@ -84,6 +86,11 @@ struct Header {
 	std::atomic<uint32_t> mailOpWrite;
 	std::atomic<uint32_t> mailOpRead;
 	MailOp mailOps[kMailOpRingSize];
+
+	// Scripts de CLEO pedidos por un sitio local, como "dominio/nombre". El helper ya los ha comprobado.
+	std::atomic<uint32_t> siteScriptWrite;
+	std::atomic<uint32_t> siteScriptRead;
+	char siteScripts[kSiteScriptRingSize][kSiteScriptNameSize];
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);
 static_assert(sizeof(Header) <= kHeaderSize);

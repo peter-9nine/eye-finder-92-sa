@@ -41,6 +41,10 @@ constexpr POINT kMailButton = { 346, 51 };
 
 // mail.eyefinder.info
 constexpr POINT kFirstMailRow = { 500, 187 };
+constexpr POINT kReplyGood = { 410, 655 };
+
+// tests.html: el botón de CLEO
+constexpr POINT kRunCleo = { 290, 372 };
 constexpr POINT kDeleteMail = { 1058, 391 };
 
 // tests.html, a partir de la esquina del hueco de contenido
@@ -191,8 +195,10 @@ void SyncMail() {
 	bool changed = false;
 	while (gClient.TakeMailOp(operation)) {
 		changed = true;
+		std::string key, script;
 		if (operation.kind == ef::MailOpKind::MarkRead) gStore.MarkRead(operation.id);
-		else gStore.Remove(operation.id);
+		else if (operation.kind == ef::MailOpKind::Remove) gStore.Remove(operation.id);
+		else gStore.Answer(operation.id, operation.kind == ef::MailOpKind::ReplyGood ? 1 : 2, key, script);
 	}
 	if (changed) gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
 	gStore.FlushSession();
@@ -227,7 +233,13 @@ void TestApi() {
 	Expect("API: notify", eyefinder::Notify("Text") == 1);
 	Expect("API: empty notify refused", eyefinder::Notify(nullptr) == 0);
 	Expect("API: page", eyefinder::Page("Cesar", "Text") == 1);
-	Expect("API: queue count", pending() == 4);
+	Expect("API: reply email", eyefinder::SendEmailWithReplies("A", "B", "C", EF_NOTIFY_NONE, "key", "Good", "Bad") == 1);
+	Expect("API: reply email needs a key", eyefinder::SendEmailWithReplies("A", "B", "C", EF_NOTIFY_NONE, nullptr, "Good", "Bad") == 0);
+	Expect("API: reply email needs both answers", eyefinder::SendEmailWithReplies("A", "B", "C", EF_NOTIFY_NONE, "key", "Good", nullptr) == 0);
+	Expect("API: unknown reply", eyefinder::GetReply("key") == EF_REPLY_NONE && eyefinder::GetReply(nullptr) == EF_REPLY_NONE);
+	Expect("API: run script", eyefinder::RunCleoScript("x.cs") == 1);
+	Expect("API: empty script refused", eyefinder::RunCleoScript(nullptr) == 0);
+	Expect("API: queue count", pending() == 6);
 	Expect("API: unread count", eyefinder::GetUnreadCount() == 0);
 
 	// Una cola llena rechaza, en lugar de crecer sin fin.
@@ -256,6 +268,14 @@ void TestMailFiles() {
 	Expect("files: mails kept", loaded.Mails().size() == 2 && loaded.UnreadCount() == 1);
 	Expect("files: text kept", loaded.Mails()[0].from == "From \xC3\xB1" && loaded.Mails()[0].body == "Body\nwith lines");
 	Expect("files: new ids don't collide", loaded.Add("x", "x", "x", "x") == 3);
+
+	MailStore replying;
+	replying.AddWithReplies("a", "b", "c", "d", "key1", "Good", "Bad", "g.cs", "b.cs");
+	std::string replyKey, replyScript;
+	Expect("files: answer", replying.Answer(1, 2, replyKey, replyScript) && replyKey == "key1" && replyScript == "b.cs");
+	Expect("files: save replies", replying.SaveTo(folder / L"GTASAsf4.json"));
+	MailStore replied;
+	Expect("files: load replies", replied.LoadFrom(folder / L"GTASAsf4.json") && replied.Mails()[0].answer == 2 && replied.Mails()[0].badText == "Bad" && replied.Replies().at("key1") == 2);
 
 	MailStore second;
 	Expect("files: load second slot", second.LoadFrom(folder / L"GTASAsf2.json") && second.Mails().size() == 1 && second.Mails()[0].from == "Other");
@@ -455,6 +475,40 @@ int wmain(int argc, wchar_t** argv) {
 	gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
 	RunWithMail(2200);
 	Shot("17_mail_new_arrived");
+
+	// Respuestas: el correo nuevo trae dos, y solo se puede elegir una vez.
+	const uint32_t replyMail = gStore.AddWithReplies("Ryder", "You in?", "Meet me at the spot.", "Day 5, 21:00",
+		"harness_key", "I'm in, homie.", "Forget it, fool.", "good.cs", "");
+	gStore.FlushSession();
+	gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
+	RunWithMail(2200);
+	Click(kFirstMailRow);
+	RunWithMail(800);
+	Shot("17b_mail_replies");
+	Click(kReplyGood);
+	RunWithMail(800);
+	Shot("17c_mail_answered");
+	{
+		const Mail* answered = nullptr;
+		for (const Mail& mail : gStore.Mails()) {
+			if (mail.id == replyMail) answered = &mail;
+		}
+		Expect("replies: the good answer was recorded", answered && answered->answer == 1 && answered->read);
+		std::string key, script;
+		Expect("replies: only one answer", !gStore.Answer(replyMail, 2, key, script));
+		Expect("replies: script kept", answered && answered->goodScript == "good.cs");
+		Expect("replies: survive deleting", gStore.Remove(replyMail) && gStore.KnowsReplyKey("harness_key") && gStore.Replies().at("harness_key") == 1);
+	}
+
+	// Un botón en una web local pide un script, y solo el de su carpeta.
+	GoTo("www.eyefinder.info/tests.html", 1500);
+	Click(kRunCleo);
+	Run(700);
+	Shot("17d_cleo_button");
+	{
+		std::string siteScript;
+		Expect("web button: script requested", gClient.TakeSiteScript(siteScript) && siteScript == "www.eyefinder.info/hello");
+	}
 
 	// El busca, sobre la página. Tiene que acabar solo.
 	gPager.Show("Big Smoke", "I'll have two number 9s, a number 9 large, a number 6 with extra dip, a number 7, two number 45s");

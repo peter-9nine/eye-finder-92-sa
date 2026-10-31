@@ -22,6 +22,8 @@
     <p><input id="text" placeholder="Type here" style="font:inherit;padding:6px;width:320px"> <span id="echo"></span></p>
     <p><select id="dropdown"><option>Los Santos</option><option>San Fierro</option><option>Las Venturas</option></select>
        <span id="picked">Los Santos</span></p>
+    <p><button id="runCleo">Run CLEO script</button> <span id="cleoResult"></span></p>
+    <p>Reading the inbox from another site: <span id="crossSite">checking</span></p>
   </section>
   <section>
     <h2>Animation test</h2>
@@ -30,12 +32,22 @@
   </section>
   <section id="fillers"><h2>Scrolling test</h2></section>
 </main>
+<script src="/_game/sa.js"></script>
 <script>
   const byId = (id) => document.getElementById(id);
 
 let clicks = 0;
   byId('clicker').onclick = () => { byId('clicks').textContent = ++clicks + ' clicks'; };
   byId('text').oninput = (e) => { byId('echo').textContent = 'Typed: ' + e.target.value; };
+  byId('runCleo').onclick = async () => {
+    byId('cleoResult').textContent = (await sa.runScript('hello')) ? 'Sent to the game' : 'Refused';
+  };
+
+  // Debe fallar: otro origen no puede leer el correo, ni siquiera con la cabecera.
+  fetch('https://mail.eyefinder.info/api/inbox', { headers: { 'X-EyeFinder': '1' } })
+    .then(() => { byId('crossSite').textContent = 'ALLOWED (BAD)'; })
+    .catch(() => { byId('crossSite').textContent = 'blocked'; });
+
   byId('dropdown').onchange = (e) => { byId('picked').textContent = e.target.value; };
 
   for (let i = 1; i <= 30; i++) {

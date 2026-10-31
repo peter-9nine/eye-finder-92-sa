@@ -11,6 +11,12 @@ bool GameCanShowNotifications() {
 	return !FrontEndMenuManager.m_bMenuActive && !TheCamera.m_bWideScreenOn && !CCutsceneMgr::ms_running;
 }
 
+// El juego copia el texto aquí solo si lo acepta. No sirve HelpMessageDisplayed: sigue en falso
+// hasta que el cuadro se dibuja, y por eso el aviso se repetía sin fin.
+bool HelpMessageAccepted(const std::string& text) {
+	return std::strncmp(CHud::m_pHelpMessage, text.c_str(), 399) == 0;
+}
+
 std::string GameDate() {
 	const int day = static_cast<int>(CStats::GetStatValue(STAT_DAYS_PASSED_IN_GAME));
 	char text[32];
@@ -40,7 +46,13 @@ void MailSystem::OnNewGame() {
 	texts_.clear();
 	pages_.clear();
 	store_.FlushSession();
+	api::ClearReplies();
 	PublishUnreadCount();
+}
+
+void MailSystem::SyncReplies() {
+	api::ClearReplies();
+	for (const auto& [key, answer] : store_.Replies()) api::SetReply(key, answer);
 }
 
 std::filesystem::path MailSystem::SaveFileFor(const char* gameSaveFile) const {
@@ -79,7 +91,31 @@ void MailSystem::OnGameLoaded() {
 	}
 
 	store_.FlushSession();
+	SyncReplies();
 	PublishUnreadCount();
+}
+
+void MailSystem::RunCleoScript(const std::string& path) {
+	// CLEO puede no estar instalado: se busca en cada uso y nunca se enlaza.
+	using CreateCustomScript = void*(__stdcall*)(void* fromThread, const char* filePath, int label);
+	const HMODULE cleo = GetModuleHandleA("CLEO.asi");
+	const auto create = cleo ? reinterpret_cast<CreateCustomScript>(GetProcAddress(cleo, "_CLEO_CreateCustomScript@12")) : nullptr;
+	if (!create) {
+		Log("Could not run CLEO script " + path + ": CLEO is not installed");
+		return;
+	}
+
+	// Un archivo que falta se avisa aquí, antes de pedírselo a CLEO.
+	std::error_code error;
+	const std::filesystem::path file(path);
+	const std::filesystem::path full = file.is_absolute() ? file : std::filesystem::path(L"cleo") / file;
+	if (!std::filesystem::is_regular_file(full, error)) {
+		Log("Could not run CLEO script " + path + ": file not found");
+		return;
+	}
+
+	// Se llama solo desde Update, fuera del bucle de scripts del juego.
+	Log(std::string(create(nullptr, path.c_str(), 0) ? "Started CLEO script " : "CLEO refused to start script ") + path);
 }
 
 void MailSystem::Deliver(std::string from, std::string subject, std::string body) {
@@ -92,15 +128,28 @@ void MailSystem::HandleApiRequests() {
 	for (api::Request& request : api::Drain()) {
 		switch (request.kind) {
 		case api::RequestKind::Email: {
+			// Un correo con respuesta solo llega una vez por partida.
+			if (!request.replyKey.empty() && store_.KnowsReplyKey(request.replyKey)) break;
+
 			const std::string sender = request.from;
 			const std::string subject = request.subject;
-			Deliver(std::move(request.from), std::move(request.subject), std::move(request.body));
+			if (request.replyKey.empty()) {
+				Deliver(std::move(request.from), std::move(request.subject), std::move(request.body));
+			}
+			else {
+				store_.AddWithReplies(std::move(request.from), std::move(request.subject), std::move(request.body), GameDate(),
+					request.replyKey, std::move(request.goodText), std::move(request.badText), std::move(request.goodScript), std::move(request.badScript));
+				api::SetReply(request.replyKey, 0);
+			}
 			changed = true;
 
 			if (request.notify == EF_NOTIFY_TEXT) ++newMailToAnnounce_;
 			else if (request.notify == EF_NOTIFY_PAGER) pages_.push_back({ sender, "NEW EMAIL: " + subject });
 			break;
 		}
+		case api::RequestKind::RunScript:
+			RunCleoScript(request.body);
+			break;
 		case api::RequestKind::Text:
 			texts_.push_back(ToPlainAscii(request.body));
 			break;
@@ -120,13 +169,39 @@ void MailSystem::HandleBrowserOperations() {
 	while (overlay_->TakeMailOp(operation)) {
 		if (operation.kind == ef::MailOpKind::MarkRead) changed |= store_.MarkRead(operation.id);
 		else if (operation.kind == ef::MailOpKind::Remove) changed |= store_.Remove(operation.id);
+		else {
+			const int answer = operation.kind == ef::MailOpKind::ReplyGood ? EF_REPLY_GOOD : EF_REPLY_BAD;
+			std::string key;
+			std::string script;
+			if (store_.Answer(operation.id, answer, key, script)) {
+				changed = true;
+				api::SetReply(key, answer);
+				if (!script.empty()) RunCleoScript(script);
+			}
+		}
+	}
+
+	// Un botón de un sitio local: solo llegan scripts de la carpeta de ese sitio.
+	std::string siteScript;
+	while (overlay_->TakeSiteScript(siteScript)) {
+		const size_t slash = siteScript.find('/');
+		if (slash == std::string::npos) continue;
+
+		const std::filesystem::path file = std::filesystem::path(PluginDirectory()) / L"browser" / L"sites" /
+			siteScript.substr(0, slash) / L"scripts" / (siteScript.substr(slash + 1) + ".efs");
+		RunCleoScript(file.string());
 	}
 
 	if (changed) PublishUnreadCount();
 }
 
 void MailSystem::ShowNextText() {
+	// Si ya lo ha leído o borrado todo, no queda nada que anunciar.
+	if (newMailToAnnounce_ > 0 && store_.UnreadCount() == 0) newMailToAnnounce_ = 0;
 	if (newMailToAnnounce_ == 0 && texts_.empty()) return;
+
+	// Un momento entre avisos, para que el juego llegue a mostrar el anterior.
+	if (GetTickCount() - lastTextShown_ < 1000) return;
 
 	// El cuadro de ayuda queda detrás del navegador, así que espera a que se cierre.
 	if (overlay_->IsOpen() || !GameCanShowNotifications() || CHud::HelpMessageDisplayed()) return;
@@ -144,7 +219,9 @@ void MailSystem::ShowNextText() {
 	CHud::SetHelpMessage(text.c_str(), false, false, false);
 
 	// El juego rechaza el mensaje en algunos momentos: entonces se vuelve a intentar.
-	if (!CHud::HelpMessageDisplayed()) return;
+	if (!HelpMessageAccepted(text)) return;
+	lastTextShown_ = GetTickCount();
+	Log("Help box: " + text);
 	if (newMailToAnnounce_ > 0) newMailToAnnounce_ = 0;
 	else texts_.pop_front();
 }

@@ -26,6 +26,11 @@
   button { font: inherit; padding: 2px 12px; }
   #body { flex: 1; overflow-y: auto; margin: 0; padding: 12px; font: 16px "Courier New", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
   #nothing { margin: auto; color: #555; }
+  #replies { flex: none; padding: 10px; background: #e8e8e8; border-top: 1px solid #808080; }
+  #replyPrompt { margin-bottom: 6px; font-weight: bold; }
+  #replyButtons { display: flex; gap: 8px; }
+  #replyButtons button { flex: 1 1 0; min-height: 34px; padding: 4px 10px; }
+  #answered { font-style: italic; }
 </style>
 </head>
 <body>
@@ -48,6 +53,13 @@
       <div id="subjectRow"><b>Subject:</b><span id="readSubject"></span></div>
     </div>
     <div id="body" hidden></div>
+    <div id="replies" hidden>
+      <div id="replyChoice">
+        <div id="replyPrompt">Your answer:</div>
+        <div id="replyButtons"><button id="replyGood"></button><button id="replyBad"></button></div>
+      </div>
+      <div id="answered" hidden></div>
+    </div>
   </div>
 
 <script>
@@ -105,12 +117,25 @@
     byId('nothing').hidden = !!mail;
     byId('details').hidden = !mail;
     byId('body').hidden = !mail;
-    if (!mail) return;
+    if (!mail) {
+      byId('replies').hidden = true;
+      return;
+    }
     byId('readFrom').textContent = mail.from;
     byId('readReceived').textContent = mail.received;
     byId('readSubject').textContent = mail.subject;
     fillBody(mail.body);
     byId('body').scrollTop = 0;
+
+    const canReply = !!mail.replyKey;
+    byId('replies').hidden = !canReply;
+    if (canReply) {
+      byId('replyChoice').hidden = mail.answer !== 0;
+      byId('answered').hidden = mail.answer === 0;
+      byId('replyGood').textContent = mail.goodText;
+      byId('replyBad').textContent = mail.badText;
+      byId('answered').textContent = mail.answer ? 'You answered: ' + (mail.answer === 1 ? mail.goodText : mail.badText) : '';
+    }
   }
 
   function select(id) {
@@ -123,6 +148,18 @@
     render();
     renderReader();
   }
+
+  function answer(value) {
+    const mail = mails.find((item) => item.id === selectedId);
+    if (!mail || mail.answer) return;
+    mail.answer = value;
+    mail.read = true;
+    call('/api/reply/' + mail.id + '/' + value, 'POST');
+    render();
+    renderReader();
+  }
+  byId('replyGood').onclick = () => answer(1);
+  byId('replyBad').onclick = () => answer(2);
 
   byId('remove').onclick = () => {
     if (selectedId === null) return;
@@ -143,7 +180,9 @@
       // Una operación puede estar en camino: lo que el jugador acaba de hacer manda.
       const known = new Map(mails.map((mail) => [mail.id, mail]));
       for (const mail of fresh) {
-        if (known.get(mail.id)?.read) mail.read = true;
+        const old = known.get(mail.id);
+        if (old?.read) mail.read = true;
+        if (old?.answer) mail.answer = old.answer;
       }
       if (JSON.stringify(fresh) === JSON.stringify(mails)) return;
 

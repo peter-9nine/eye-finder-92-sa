@@ -27,6 +27,8 @@ private:
 
 	void HandleApiRequests();
 	void HandleBrowserOperations();
+	void RunCleoScript(const std::string& path);
+	void SyncReplies();
 	void ShowNextText();
 	void ShowNextPage();
 	void Deliver(std::string from, std::string subject, std::string body);
@@ -43,4 +45,5 @@ private:
 	std::deque<std::string> texts_;
 	std::deque<PagerMessage> pages_;
 	DWORD lastDraw_ = 0;
+	DWORD lastTextShown_ = 0;
 };

@@ -2,6 +2,7 @@
 // La bandeja de entrada y su archivo. No depende del juego, así que el arnés también la usa.
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,14 @@ struct Mail {
 	std::string body;
 	std::string received;
 	bool read = false;
+
+	// Las dos respuestas que ofrece quien envía el correo. Sin ellas, no se puede responder.
+	std::string replyKey;
+	std::string goodText;
+	std::string badText;
+	std::string goodScript;
+	std::string badScript;
+	int answer = 0;  // 0 sin responder, 1 buena, 2 mala
 };
 
 class MailStore {
@@ -21,6 +30,13 @@ public:
 
 	void Clear();
 	uint32_t Add(std::string from, std::string subject, std::string body, std::string received);
+	uint32_t AddWithReplies(std::string from, std::string subject, std::string body, std::string received,
+		std::string replyKey, std::string goodText, std::string badText, std::string goodScript, std::string badScript);
+
+	// Devuelve true solo la primera vez: una respuesta no se puede cambiar. Si tiene script, lo deja en script.
+	bool Answer(uint32_t id, int answer, std::string& key, std::string& script);
+	bool KnowsReplyKey(const std::string& key) const { return replies_.count(key) != 0; }
+	const std::map<std::string, int>& Replies() const { return replies_; }
 	bool MarkRead(uint32_t id);
 	bool Remove(uint32_t id);
 
@@ -38,6 +54,8 @@ public:
 private:
 	std::filesystem::path sessionPath_;
 	std::vector<Mail> mails_;
+	// Sobrevive a borrar el correo: el mod que lo envió sigue pudiendo preguntar.
+	std::map<std::string, int> replies_;
 	uint32_t nextId_ = 1;
 	bool dirty_ = true;
 };

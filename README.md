@@ -53,6 +53,19 @@ eyefinder::Notify("The Pay 'n' Spray is closed.");
 eyefinder::Page("Cesar", "Meet me at the garage.");
 
 int unread = eyefinder::GetUnreadCount();
+
+// An email the player answers with one of two buttons. You write both answers.
+// Each key is delivered once per saved game, so it's safe to send it every time your mod starts.
+eyefinder::SendEmailWithReplies("Ryder", "You in?", "Meet me at the spot.", EF_NOTIFY_PAGER,
+    "mymod_ryder_meeting",                    // your unique key
+    "I'm in, homie.", "Forget it, fool.",     // the two answers
+    "mymod_good.cs", nullptr);                // optional CLEO script for each answer
+
+// Later, check what the player chose: EF_REPLY_NONE, EF_REPLY_GOOD or EF_REPLY_BAD
+int reply = eyefinder::GetReply("mymod_ryder_meeting");
+
+// Start a CLEO script right away
+eyefinder::RunCleoScript("mymod_script.cs");
 ```
 
 - Calls are safe from any thread, and do nothing if EyeFinder92SA isn't installed.
@@ -61,7 +74,26 @@ int unread = eyefinder::GetUnreadCount();
 - Text is UTF-8. Email bodies are plain text, and web addresses become links. The pager and help box show ASCII only, so accents are removed.
 - Notifications wait for cutscenes and the pause menu to end. The help box also waits for the computer to close, while the pager appears over it.
 
-`examples/ApiDemo` is a complete example. To try it, run `tools\deploy.ps1 -Demo`, then in-game press F9 (email), F10 (email on the pager), F11 (pager message) or Shift+F11 (help box text). To remove it, delete `EyeFinderApiDemo.asi` from the mod folder.
+`examples/ApiDemo` is a complete example. To try it, run `tools\deploy.ps1 -Demo`, then in-game press F9 (email with answers), F10 (email on the pager), F11 (pager message) or Shift+F11 (help box text). To remove it, delete `EyeFinderApiDemo.asi` from the mod folder.
+
+## CLEO scripts
+
+CLEO scripts can start from an email answer, from another mod through `EF_RunCleoScript`, or from a button on a site:
+
+```
+sites\www.mysite.com\
+  index.html
+  scripts\hello.efs
+```
+
+```html
+<script src="/_game/sa.js"></script>
+<button onclick="sa.runScript('hello')">Do it</button>
+```
+
+A site's script is a compiled CLEO script renamed from `.cs` to `.efs`. This matters because modloader starts every `.cs` file in a mod folder when the game starts. For the same reason, a script started from an email answer shouldn't be a `.cs` file inside a modloader folder, unless you also want it to run at startup.
+
+A site can only start scripts from its own `scripts` folder, using simple names. Real websites can't start scripts at all. **Installing a site with scripts is like installing a mod, because CLEO scripts can do anything the game can, so only install sites you trust.** CLEO is optional: without it, these requests are logged and ignored. Tested with CLEO 5.4.0.
 
 ## Save data
 

@@ -1,5 +1,6 @@
 #include "BrowserClient.h"
 
+#include <cstring>
 #include <new>
 
 namespace {
@@ -141,6 +142,18 @@ bool BrowserClient::TakeMailOp(ef::MailOp& operation) {
 
 	operation = header_->mailOps[read % ef::kMailOpRingSize];
 	header_->mailOpRead.store(read + 1, std::memory_order_release);
+	return true;
+}
+
+bool BrowserClient::TakeSiteScript(std::string& name) {
+	if (!header_) return false;
+
+	const uint32_t read = header_->siteScriptRead.load(std::memory_order_relaxed);
+	if (read == header_->siteScriptWrite.load(std::memory_order_acquire)) return false;
+
+	const char* entry = header_->siteScripts[read % ef::kSiteScriptRingSize];
+	name.assign(entry, strnlen(entry, ef::kSiteScriptNameSize));
+	header_->siteScriptRead.store(read + 1, std::memory_order_release);
 	return true;
 }
 

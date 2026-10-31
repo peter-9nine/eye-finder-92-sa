@@ -22,6 +22,7 @@ public:
 
 	void SetUnreadMail(int unread);
 	bool TakeMailOp(ef::MailOp& operation) { return client_.TakeMailOp(operation); }
+	bool TakeSiteScript(std::string& name) { return client_.TakeSiteScript(name); }
 
 private:
 	// Cerrado -> fundido a negro del juego -> abierto -> fundido a negro del navegador -> cerrado.

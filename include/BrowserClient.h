@@ -28,6 +28,7 @@ public:
 	ef::CursorKind Cursor() const;
 	bool TakeCloseRequest();
 	bool TakeMailOp(ef::MailOp& operation);
+	bool TakeSiteScript(std::string& name);
 
 private:
 	HANDLE mapping_ = nullptr;
