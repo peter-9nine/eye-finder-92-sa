@@ -17,6 +17,10 @@ Copy-Item "$root\bin\GTASA\$Configuration\EyeFinder92SA.asi" $target -Force
 robocopy "$root\helper\build\Release" $browser /MIR /NFL /NDL /NJH /NJS /NP /XF '*.pdb' '*.lib' '*.exp' '*.ilk' | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 
+# El contenido público de ejemplo se añade sin borrar nada: esas carpetas son de quien las use.
+robocopy "$root\public" $target /E /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+
 # El mod de ejemplo de la API solo se instala si se pide. -Demo:$false no lo quita.
 if ($Demo) { Copy-Item "$root\tools\harness\build\Release\EyeFinderApiDemo.asi" $target -Force }
 

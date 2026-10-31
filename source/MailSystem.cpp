@@ -187,9 +187,12 @@ void MailSystem::HandleBrowserOperations() {
 		const size_t slash = siteScript.find('/');
 		if (slash == std::string::npos) continue;
 
-		const std::filesystem::path file = std::filesystem::path(PluginDirectory()) / L"browser" / L"sites" /
-			siteScript.substr(0, slash) / L"scripts" / (siteScript.substr(slash + 1) + ".efs");
-		RunCleoScript(file.string());
+		const std::filesystem::path relative = std::filesystem::path(siteScript.substr(0, slash)) / L"scripts" / (siteScript.substr(slash + 1) + ".efs");
+		const std::filesystem::path systemFile = std::filesystem::path(PluginDirectory()) / L"browser" / L"sites" / relative;
+		const std::filesystem::path publicFile = std::filesystem::path(PluginDirectory()) / L"sites" / relative;
+
+		std::error_code error;
+		RunCleoScript((std::filesystem::is_regular_file(systemFile, error) ? systemFile : publicFile).string());
 	}
 
 	if (changed) PublishUnreadCount();

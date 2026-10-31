@@ -5,19 +5,31 @@
 <title>EyeFinder</title>
 <style>
   body { margin: 0; background: #fff; color: #000; font: 16px "Times New Roman", Times, serif; text-align: center; }
-  h1 { margin: 48px 0 4px; font-size: 56px; color: #000080; letter-spacing: 1px; }
+  h1 { margin: 36px 0 4px; font-size: 56px; color: #000080; letter-spacing: 1px; }
   h1 span { color: #cc0000; }
-  .tagline { margin: 0 0 24px; font-style: italic; }
-  form { margin-bottom: 28px; }
+  h2 { margin: 18px 0 6px; font-size: 20px; color: #000080; }
+  .tagline { margin: 0 0 20px; font-style: italic; }
+  form { margin-bottom: 18px; }
   input { width: 380px; max-width: 70%; padding: 3px 5px; font: inherit; }
   button { font: inherit; padding: 2px 12px; }
-  hr { width: 70%; }
-  table { margin: 20px auto; text-align: left; }
-  td { padding: 4px 28px; vertical-align: top; }
-  th { padding: 4px 28px; text-align: left; color: #000080; }
+  hr { width: 80%; }
+  #directory { width: 80%; max-width: 760px; margin: 0 auto; text-align: left; }
+  .site { padding: 7px 4px; border-bottom: 1px dotted #999; }
+  .site a { font-size: 18px; font-weight: bold; color: #0000ee; }
+  .site a:visited { color: #551a8b; }
+  .site .address { color: #006000; font-size: 14px; }
+  .site .description { display: block; margin-top: 2px; }
+  .adSlot { margin: 12px 0; padding: 6px; background: #f4f4e8; border: 1px solid #c8c8b0; text-align: center; }
+  .adSlot::before { content: "Advertisement"; display: block; margin-bottom: 4px; font-size: 11px; color: #777; }
+  .adSlot img { max-height: 110px; width: auto !important; }
+  #noSites { padding: 16px; color: #555; text-align: center; }
+  table { margin: 12px auto; text-align: left; }
+  td { padding: 3px 28px; vertical-align: top; }
+  th { padding: 3px 28px; text-align: left; color: #000080; }
   a { color: #0000ee; }
   a:visited { color: #551a8b; }
-  footer { margin: 24px 0; font-size: 13px; color: #555; }
+  .note { margin: 0; font-style: italic; color: #555; }
+  footer { margin: 18px 0; font-size: 13px; color: #555; }
 </style>
 </head>
 <body>
@@ -33,8 +45,15 @@
 
   <hr>
 
+  <h2>Sites of the Day</h2>
+  <div id="directory"></div>
+  <div id="noSites" hidden>No sites are online right now. Check back soon!</div>
+
+  <hr>
+
+  <h2>Beyond San Andreas</h2>
+  <p class="note">On the real internet. You'll be asked first.</p>
   <table>
-    <tr><th colspan="3" style="font-weight:normal;font-style:italic;color:#555">On the real internet. You'll be asked first.</th></tr>
     <tr><th>Reference</th><th>Computers</th><th>News</th></tr>
     <tr>
       <td><a href="https://www.wikipedia.org">Wikipedia</a></td>
@@ -51,7 +70,60 @@
   <hr>
   <footer>Copyright 1992 EyeFinder Information Services, Los Santos, SA.</footer>
 
+  <script src="/_game/sa.js"></script>
   <script>
+    const SITES_BETWEEN_ADS = 3;
+
+    function buildSiteRow(site) {
+      const row = document.createElement('div');
+      row.className = 'site';
+
+      const link = document.createElement('a');
+      link.href = site.url;
+      link.textContent = site.title;
+
+      const address = document.createElement('span');
+      address.className = 'address';
+      address.textContent = ' - ' + site.domain;
+
+      row.append(link, address);
+
+      if (site.description) {
+        const description = document.createElement('span');
+        description.className = 'description';
+        description.textContent = site.description;
+        row.append(description);
+      }
+      return row;
+    }
+
+    function buildAdSlot() {
+      const slot = document.createElement('div');
+      slot.className = 'adSlot';
+      slot.setAttribute('data-eyefinder-ad', '');
+      slot.setAttribute('data-kind', 'banner');
+      return slot;
+    }
+
+    // Un orden nuevo en cada visita, con anuncios entre los sitios.
+    async function showDirectory() {
+      const directory = document.getElementById('directory');
+      const sites = sa.shuffle(await sa.sites());
+      document.getElementById('noSites').hidden = sites.length > 0;
+
+      sites.forEach((site, index) => {
+        directory.append(buildSiteRow(site));
+        if ((index + 1) % SITES_BETWEEN_ADS === 0 && index + 1 < sites.length) directory.append(buildAdSlot());
+      });
+
+      await sa.fillAds();
+
+      // Sin anuncios instalados, no se dejan huecos vacíos.
+      for (const slot of directory.querySelectorAll('.adSlot:not([data-eyefinder-filled])')) slot.remove();
+    }
+
+    showDirectory();
+
     document.getElementById('search').addEventListener('submit', (event) => {
       event.preventDefault();
       const query = document.getElementById('query').value.trim();

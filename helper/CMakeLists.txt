@@ -27,6 +27,7 @@ COPY_FILES("${CEF_TARGET}" "${CEF_RESOURCE_FILES}" "${CEF_RESOURCE_DIR}" "${CEF_
 
 # Se vacían antes de copiar: un archivo viejo llegaría a modloader, y este ejecuta cualquier .cs que encuentre.
 add_custom_command(TARGET ${CEF_TARGET} POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E rm -rf "${CEF_TARGET_OUT_DIR}/ui" "${CEF_TARGET_OUT_DIR}/sites"
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${CEF_TARGET_OUT_DIR}/ui" "${CEF_TARGET_OUT_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/ads"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../public" "${CMAKE_CURRENT_BINARY_DIR}"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../ui" "${CEF_TARGET_OUT_DIR}/ui"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../sites" "${CEF_TARGET_OUT_DIR}/sites")

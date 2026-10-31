@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -38,6 +39,7 @@ constexpr POINT kNewTabWithOneTab = { 373, 87 };
 constexpr POINT kMinimize = { 1056, 15 };
 constexpr POINT kRestore = { 60, 680 };
 constexpr POINT kMailButton = { 346, 51 };
+constexpr POINT kPublicSiteAd = { 640, 442 };
 constexpr POINT kNetMode = { 1070, 51 };
 constexpr POINT kConnect = { 545, 437 };
 constexpr POINT kStayLocal = { 735, 437 };
@@ -73,6 +75,9 @@ OverlayRenderer gRenderer;
 PagerRenderer gPager;
 MailStore gStore;
 DWORD gLastFrame = 0;
+D3DPRESENT_PARAMETERS gParameters{};
+int gDeviceLosses = 0;
+int gDeviceLossesAtLastShot = 0;
 IDirect3DDevice9* gDevice = nullptr;
 Stats gStats;
 std::string gOutput;
@@ -90,7 +95,29 @@ void ExpectPixel(const char* what, POINT point, uint32_t expected) {
 	}
 }
 
+// Devuelve false mientras no se pueda dibujar. Es lo que hace el plugin: soltar la textura y pedir un fotograma.
+bool DeviceReady() {
+	const HRESULT state = gDevice->TestCooperativeLevel();
+	if (state == D3D_OK) return true;
+
+	if (state == D3DERR_DEVICENOTRESET) {
+		gRenderer.Release();
+		if (SUCCEEDED(gDevice->Reset(&gParameters))) {
+			++gDeviceLosses;
+			printf("device lost and recovered\n");
+			gClient.Send({ ef::EventType::Invalidate });
+			return true;
+		}
+	}
+	return false;
+}
+
 void RenderFrame() {
+	if (!DeviceReady()) {
+		Sleep(50);
+		return;
+	}
+
 	if (const uint8_t* pixels = gClient.AcquireFrame()) {
 		if (gRenderer.Upload(gDevice, pixels, gClient.Width(), gClient.Height(), gClient.Stride())) {
 			++gStats.uploads;
@@ -123,6 +150,13 @@ void Run(int milliseconds) {
 
 // Guarda lo que hay realmente en el búfer trasero, no lo que envió el helper.
 void Shot(const char* name) {
+	// Si se ha perdido el dispositivo, primero hay que recuperarlo y volver a dibujar.
+	for (int attempt = 0; attempt < 100 && gDevice->TestCooperativeLevel() != D3D_OK; ++attempt) Run(50);
+	if (gDeviceLosses > gDeviceLossesAtLastShot) {
+		gDeviceLossesAtLastShot = gDeviceLosses;
+		Run(500);
+	}
+
 	IDirect3DSurface9* target = nullptr;
 	IDirect3DSurface9* copy = nullptr;
 	bool ok = false;
@@ -347,15 +381,14 @@ int wmain(int argc, wchar_t** argv) {
 		return 1;
 	}
 
-	D3DPRESENT_PARAMETERS parameters{};
-	parameters.Windowed = TRUE;
-	parameters.SwapEffect = D3DSWAPEFFECT_COPY;
-	parameters.BackBufferFormat = D3DFMT_X8R8G8B8;
-	parameters.BackBufferWidth = gWidth;
-	parameters.BackBufferHeight = gHeight;
-	parameters.hDeviceWindow = window;
-	parameters.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
-	if (FAILED(d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window, D3DCREATE_HARDWARE_VERTEXPROCESSING, &parameters, &gDevice))) {
+	gParameters.Windowed = TRUE;
+	gParameters.SwapEffect = D3DSWAPEFFECT_COPY;
+	gParameters.BackBufferFormat = D3DFMT_X8R8G8B8;
+	gParameters.BackBufferWidth = gWidth;
+	gParameters.BackBufferHeight = gHeight;
+	gParameters.hDeviceWindow = window;
+	gParameters.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+	if (FAILED(d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window, D3DCREATE_HARDWARE_VERTEXPROCESSING, &gParameters, &gDevice))) {
 		puts("FAIL: CreateDevice");
 		return 1;
 	}
@@ -396,6 +429,48 @@ int wmain(int argc, wchar_t** argv) {
 	Click(kIconInternet);
 	Run(1200);
 	Shot("02_home");
+
+	// Cada visita baraja los sitios y los anuncios.
+	{
+		const std::vector<uint32_t> first = gLastShot;
+		bool changed = false;
+		for (int attempt = 0; attempt < 8 && !changed; ++attempt) {
+			gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_F5 });
+			gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_F5 });
+			Run(1000);
+			Shot("02b_home_shuffled");
+			changed = gLastShot != first;
+		}
+		Expect("home page: the order changes between visits", changed);
+	}
+
+	// Un sitio público, con un anuncio de la carpeta compartida.
+	GoTo("www.binco.sa", 1200);
+	Shot("02c_public_site_with_ad");
+	Click(kPublicSiteAd);
+	Run(1200);
+	Shot("02d_after_clicking_ad");
+	Expect("ad: clicking leaves for another site", (gLastShot[size_t(150) * gWidth + 300] & 0xFFFFFF) != 0x1A4F9C);
+
+	// Direcciones extra para revisar a mano: EF_HARNESS_VISIT=a;b;c
+	if (const char* visits = getenv("EF_HARNESS_VISIT")) {
+		std::string list = visits;
+		int number = 0;
+		size_t start = 0;
+		while (start < list.size()) {
+			size_t end = list.find(';', start);
+			if (end == std::string::npos) end = list.size();
+			const std::string address = list.substr(start, end - start);
+			start = end + 1;
+
+			++number;
+			GoTo(address.c_str(), 1800);
+			Shot(("visit_" + std::to_string(number) + "_top").c_str());
+			gClient.Send({ ef::EventType::Wheel, gWidth / 2, gHeight / 2, 0, -100000, 0 });
+			Run(800);
+			Shot(("visit_" + std::to_string(number) + "_bottom").c_str());
+		}
+	}
 
 	// Barra de direcciones -> sitio local, con entrada en la página.
 	GoTo("www.eyefinder.info/tests.html", 1200);

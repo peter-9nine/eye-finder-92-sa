@@ -25,15 +25,24 @@ A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https:
 
 See the [FAQ for site creators](api/FAQ.md) for the details, including how to use CLEO scripts from a page.
 
-Create a folder named after the address in `sites\`, with normal web files in it:
+There are two kinds of site:
+
+| Kind | In the game folder | In this repository | When the mod updates |
+|---|---|---|---|
+| Public sites and ads | `modloader\EyeFinder92SA\sites` and `ads` | Samples in `public` | Left alone |
+| The mod's own sites | `modloader\EyeFinder92SA\browser\sites` | `sites` | Replaced |
+
+To add a public site, create a folder named after its address, with normal web files in it. The EyeFinder home page lists it automatically, in a new random order on each visit, with ads between the sites. Restart the game to pick up a new folder.
 
 ```
 sites\www.mysite.com\
   index.html
-  style.css
+  site.json
 ```
 
-You can preview it in any web browser. Restart the game to pick up a new folder.
+Any page can show an ad for another site with `<div data-eyefinder-ad></div>` and `<script src="/_game/sa.js"></script>`.
+
+`tools\import_old_pages.py` converts pages and ads from the old image-based EyeFinder92 into public sites and ads.
 
 `modloader\EyeFinder92SA\EyeFinder92SA.log` records startup problems and, while the browser is open, performance every 5 seconds.
 

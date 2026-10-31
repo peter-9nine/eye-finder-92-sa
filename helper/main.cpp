@@ -162,16 +162,147 @@ CefRefPtr<CefResourceHandler> HandleMailApi(const std::string& path, CefRefPtr<C
 	return JsonResponse(200, "{}");
 }
 
+fs::path ExecutableDirectory() {
+	wchar_t buffer[MAX_PATH]{};
+	GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+	return fs::path(buffer).parent_path();
+}
+
+// Dos sitios para los sitios: browser\\sites es del mod y se sustituye al actualizarlo. La carpeta
+// sites junto al .asi es pública: quien quiera añade ahí lo suyo y nada la toca.
+fs::path SystemSitesFolder() { return ExecutableDirectory() / L"sites"; }
+fs::path PublicSitesFolder() { return ExecutableDirectory().parent_path() / L"sites"; }
+fs::path SystemAdsFolder() { return ExecutableDirectory() / L"ads"; }
+fs::path PublicAdsFolder() { return ExecutableDirectory().parent_path() / L"ads"; }
+
+std::string ReadTextFile(const fs::path& path) {
+	std::ifstream file(path, std::ios::binary);
+	std::ostringstream contents;
+	contents << file.rdbuf();
+	return contents.str();
+}
+
+// Un JSON roto de un sitio o un anuncio nunca debe romper la lista: se trata como si no estuviera.
+CefRefPtr<CefDictionaryValue> ReadJsonObject(const fs::path& path) {
+	std::error_code error;
+	if (!fs::is_regular_file(path, error)) return nullptr;
+	CefRefPtr<CefValue> value = CefParseJSON(ReadTextFile(path), JSON_PARSER_ALLOW_TRAILING_COMMAS);
+	return value && value->GetType() == VTYPE_DICTIONARY ? value->GetDictionary() : nullptr;
+}
+
+std::string StringField(CefRefPtr<CefDictionaryValue> object, const char* name) {
+	return object && object->HasKey(name) && object->GetType(name) == VTYPE_STRING ? object->GetString(name).ToString() : std::string();
+}
+
+std::string ListAsJson(const char* name, CefRefPtr<CefListValue> list) {
+	CefRefPtr<CefDictionaryValue> root = CefDictionaryValue::Create();
+	root->SetList(name, list);
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(root);
+	return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+}
+
+std::string BuildSitesJson() {
+	CefRefPtr<CefListValue> list = CefListValue::Create();
+	size_t index = 0;
+
+	std::error_code error;
+	for (const auto& entry : fs::directory_iterator(PublicSitesFolder(), error)) {
+		if (!entry.is_directory()) continue;
+
+		const std::string domain = entry.path().filename().string();
+		if (domain.find('.') == std::string::npos) continue;
+
+		// Un sitio del mod con el mismo nombre tiene prioridad, así que este no está disponible.
+		std::error_code systemError;
+		if (fs::exists(SystemSitesFolder() / entry.path().filename(), systemError)) continue;
+
+		CefRefPtr<CefDictionaryValue> details = ReadJsonObject(entry.path() / L"site.json");
+		if (details && details->HasKey("listed") && details->GetType("listed") == VTYPE_BOOL && !details->GetBool("listed")) continue;
+
+		const std::string title = StringField(details, "title");
+		CefRefPtr<CefDictionaryValue> site = CefDictionaryValue::Create();
+		site->SetString("domain", domain);
+		site->SetString("url", "https://" + domain + "/");
+		site->SetString("title", title.empty() ? domain : title);
+		site->SetString("description", StringField(details, "description"));
+		list->SetDictionary(index++, site);
+	}
+	return ListAsJson("sites", list);
+}
+
+bool IsSimpleFileName(const std::string& name) {
+	return !name.empty() && name.size() <= 128 && name != "." && name != ".." &&
+		name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.") == std::string::npos;
+}
+
+std::string BuildAdsJson() {
+	CefRefPtr<CefListValue> list = CefListValue::Create();
+	size_t index = 0;
+
+	for (const fs::path& folder : { SystemAdsFolder(), PublicAdsFolder() }) {
+		std::error_code error;
+		for (const auto& entry : fs::directory_iterator(folder, error)) {
+			if (!entry.is_directory()) continue;
+
+			const std::string id = entry.path().filename().string();
+			CefRefPtr<CefDictionaryValue> details = ReadJsonObject(entry.path() / L"ad.json");
+			const std::string image = StringField(details, "image");
+			if (!IsSimpleFileName(id) || !IsSimpleFileName(image)) continue;
+
+			// Un enlace solo puede ser una dirección web: nada de javascript:.
+			std::string link = StringField(details, "link");
+			if (link.rfind("http://", 0) != 0 && link.rfind("https://", 0) != 0) link.clear();
+
+			CefRefPtr<CefDictionaryValue> ad = CefDictionaryValue::Create();
+			ad->SetString("id", id);
+			ad->SetString("image", "/_game/ad/" + id + "/" + image);
+			ad->SetString("link", link);
+			ad->SetString("kind", StringField(details, "kind"));
+			ad->SetString("text", StringField(details, "text"));
+			list->SetDictionary(index++, ad);
+		}
+	}
+	return ListAsJson("ads", list);
+}
+
+CefRefPtr<CefResourceHandler> ServeFile(const fs::path& file, const std::string& mime) {
+	CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForFile(file.wstring());
+	if (!stream) return JsonResponse(404, "{}");
+	return new CefStreamResourceHandler(mime, stream);
+}
+
+// "<carpeta del anuncio>/<archivo>", sin poder salir de las carpetas de anuncios.
+CefRefPtr<CefResourceHandler> ServeAdImage(const std::string& path) {
+	const size_t slash = path.find('/');
+	if (slash == std::string::npos) return JsonResponse(404, "{}");
+
+	const std::string id = path.substr(0, slash);
+	const std::string name = path.substr(slash + 1);
+	if (!IsSimpleFileName(id) || !IsSimpleFileName(name)) return JsonResponse(404, "{}");
+
+	for (const fs::path& folder : { SystemAdsFolder(), PublicAdsFolder() }) {
+		const fs::path file = folder / id / name;
+		std::error_code error;
+		if (!fs::is_regular_file(file, error)) continue;
+
+		std::string extension = file.extension().string();
+		if (!extension.empty()) extension.erase(0, 1);
+		std::string mime = CefGetMimeType(extension).ToString();
+		if (mime.empty()) mime = "application/octet-stream";
+		return ServeFile(file, mime);
+	}
+	return JsonResponse(404, "{}");
+}
+
 // Lo que un sitio local puede pedirle al juego. Las webs reales no llegan aquí: estos dominios solo
 // se sirven desde el disco, y la cabecera propia impide que otro origen haga la petición.
 CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs::path& root, const std::string& path, CefRefPtr<CefRequest> request) {
-	if (path == "/_game/sa.js") {
-		static const char kScript[] =
-			"window.sa = { runScript(name) { return fetch('/_game/script/' + encodeURIComponent(name), "
-			"{ method: 'POST', headers: { 'X-EyeFinder': '1' } }).then((response) => response.ok); } };\n";
-		CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForData(const_cast<char*>(kScript), sizeof(kScript) - 1);
-		return new CefStreamResourceHandler("text/javascript", stream);
-	}
+	// Información pública: la lista de sitios y los anuncios se leen en cada petición.
+	if (path == "/_game/sa.js") return ServeFile(ExecutableDirectory() / L"ui" / L"sa.js", "text/javascript");
+	if (path == "/_game/sites.json") return JsonResponse(200, BuildSitesJson());
+	if (path == "/_game/ads.json") return JsonResponse(200, BuildAdsJson());
+	if (path.rfind("/_game/ad/", 0) == 0) return ServeAdImage(path.substr(10));
 
 	if (request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
 
@@ -812,10 +943,12 @@ public:
 
 private:
 	static void RegisterSites() {
-		wchar_t buffer[MAX_PATH]{};
-		GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-		const fs::path sites = fs::path(buffer).parent_path() / L"sites";
+		// Los del mod van los últimos: si hay dos con el mismo nombre, mandan ellos.
+		RegisterSitesIn(PublicSitesFolder(), false);
+		RegisterSitesIn(SystemSitesFolder(), true);
+	}
 
+	static void RegisterSitesIn(const fs::path& sites, bool isSystem) {
 		std::error_code error;
 		for (const auto& entry : fs::directory_iterator(sites, error)) {
 			if (!entry.is_directory()) continue;
@@ -823,9 +956,11 @@ private:
 			std::string lowered = domain.ToString();
 			for (char& c : lowered) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 			gLocalDomains.insert(lowered);
-			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), domain.ToString() == kMailDomain);
-			CefRegisterSchemeHandlerFactory("https", domain, factory);
-			CefRegisterSchemeHandlerFactory("http", domain, factory);
+
+			// El correo solo es del sitio del mod: uno público con ese nombre no tendría acceso.
+			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), isSystem && lowered == kMailDomain);
+			CefRegisterSchemeHandlerFactory("https", lowered, factory);
+			CefRegisterSchemeHandlerFactory("http", lowered, factory);
 		}
 	}
 

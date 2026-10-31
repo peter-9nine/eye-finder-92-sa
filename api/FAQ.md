@@ -8,21 +8,91 @@ For sending emails and notifications from a mod, see [`EyeFinderApi.h`](EyeFinde
 
 ### How do I add a site?
 
-Create a folder named after the site's address inside the mod's `browser\sites` folder, and put an `index.html` in it:
+Create a folder named after the site's address inside the mod's public `sites` folder, and put an `index.html` in it:
 
 ```
-modloader\EyeFinder92SA\browser\sites\
+modloader\EyeFinder92SA\sites\
   www.mysite.com\
     index.html
+    site.json
     style.css
     images\logo.png
 ```
+
+Don't use `browser\sites`. That folder holds the mod's own pages, such as the EyeFinder home page and mail, and it's replaced when the mod updates.
 
 Restart the game, because new folders are only detected when the game starts. Then open the browser and type `www.mysite.com` in the address bar.
 
 ### What can I name it?
 
-Use a lowercase name with at least one dot, such as `www.vinewoodinsider.com`. Your site replaces any real website with the same address, including when the player is connected to the real internet. So avoid real addresses unless that's what you want.
+Use a lowercase name with at least one dot, such as `www.vinewoodinsider.com`. Your site replaces any real website with the same address, including when the player is connected to the real internet. So avoid real addresses unless that's what you want. The mod's own sites, such as `www.eyefinder.info`, can't be replaced.
+
+### How does my site get listed on the EyeFinder home page?
+
+Automatically. Every public site is listed, in a new random order on each visit, with ads between them. Add a `site.json` to control how yours appears:
+
+```json
+{
+  "title": "Binco",
+  "description": "Discount clothes for the whole family."
+}
+```
+
+Without it, the site is listed by its address. To keep a site secret, so that it's reached only by typing its address, add `"listed": false`.
+
+## Ads
+
+### How do I show an ad on my page?
+
+Add these two lines:
+
+```html
+<div data-eyefinder-ad></div>
+<script src="/_game/sa.js"></script>
+```
+
+The empty `div` becomes a random ad from the shared ads folder, linked to another site. This is what connects the sites into one ecosystem: someone visiting one site finds their way to the next. Your site's own ads are never shown on your site, ads with a link are shown before ads without one, and an ad isn't repeated on a page unless it runs out of others.
+
+Size the `div` with your own CSS. To ask for a particular type of ad, add `data-kind`:
+
+```html
+<div data-eyefinder-ad data-kind="banner"></div>
+```
+
+If no ad of that kind exists, any other ad is used.
+
+### How do I create an ad?
+
+Create a folder in the mod's public `ads` folder, with an image and an `ad.json`:
+
+```
+modloader\EyeFinder92SA\ads\
+  banner-mysite\
+    banner.png
+    ad.json
+```
+
+```json
+{
+  "image": "banner.png",
+  "link": "https://www.mysite.com/",
+  "kind": "banner",
+  "text": "Visit My Site"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `image` | The image file, in the same folder |
+| `link` | Where it goes. Without it, the ad is just a picture |
+| `kind` | Optional. Any word you like; `banner` is used by the home page, at about 468x60 pixels |
+| `text` | Optional. Shown when hovering, and used if the image can't load |
+
+New ads appear right away, with no need to restart the game.
+
+### Can I build my own ad layout?
+
+Yes. `sa.ads()` returns the list of ads and `sa.sites()` the list of public sites, each as a promise, so you can build your own directory or ad rotation. If you add ad slots after the page has loaded, call `sa.fillAds()`.
 
 `http://` and `https://` both work, with no certificate to set up.
 
@@ -38,7 +108,7 @@ Save the file and press **F5** in the in-game browser. New files in an existing 
 
 Mostly, yes. Open your `index.html` in Chrome or Edge to design the page. Two things only work in-game:
 
-- `sa.runScript()`, because the `sa` object doesn't exist in a normal browser.
+- `sa.runScript()` and ads, because the `sa` object doesn't exist in a normal browser.
 - Addresses starting with `/`, such as `/style.css`, because the page isn't at the root of a site when opened as a file. Relative addresses such as `style.css` work in both places, so prefer them.
 
 To keep your page working in both, check for `sa` first:
@@ -91,7 +161,7 @@ Pages have no way to read or write the mod's save files.
 
 ### Can a page read the player's money, missions or email?
 
-No, not yet. The only game feature pages have today is starting a CLEO script. Pages can't read anything from the game, and only the built-in mail site can read the inbox.
+No, not yet. The only game feature pages have today is starting a CLEO script. Pages can't read anything from the game, and only the built-in mail site can read the inbox. A public site named `mail.eyefinder.info` wouldn't get access either.
 
 ## CLEO scripts
 
@@ -181,11 +251,11 @@ Those are for mods rather than pages. See `EF_SendEmailWithReplies` in [`EyeFind
 
 ### How do players install it?
 
-Have them copy your site folder into `modloader\EyeFinder92SA\browser\sites`, and restart the game.
+Have them copy your site folder into `modloader\EyeFinder92SA\sites`, and any ad folders into `modloader\EyeFinder92SA\ads`, then restart the game.
 
 ### Will updating the mod delete my site?
 
-It can. A new version of the mod may replace the `browser` folder, so keep your own copy of your site and reinstall it afterward if needed.
+No. Updates only replace the `browser` folder, and public sites and ads live outside it.
 
 ## Troubleshooting
 
