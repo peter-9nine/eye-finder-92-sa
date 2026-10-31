@@ -1,13 +1,15 @@
-// Prueba el helper, el protocolo y el renderizado sin el juego, en un proceso de 32 bits.
+// Prueba el helper, el protocolo, la interfaz y el renderizado sin el juego, en un proceso de 32 bits.
 //
-//   harness <helper.exe> <url> <width> <height> <output directory>
+//   harness <helper.exe> <shell url> <output directory>
 //
+// Las coordenadas corresponden a ui/shell.html a 1280x720.
 // Con un d3d9.dll de DXVK junto al ejecutable, también prueba esa ruta.
 #include <windows.h>
 #include <d3d9.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -16,6 +18,32 @@
 #include "OverlayRenderer.h"
 
 namespace {
+
+constexpr int gWidth = 1280;
+constexpr int gHeight = 720;
+
+// Interfaz
+constexpr POINT kIconInternet = { 433, 320 };
+constexpr POINT kIconLogOff = { 831, 526 };
+constexpr POINT kBack = { 186, 51 };
+constexpr POINT kForward = { 226, 51 };
+constexpr POINT kAddress = { 640, 51 };
+constexpr POINT kTab1 = { 240, 87 };
+constexpr POINT kTab2 = { 430, 87 };
+constexpr POINT kNewTabWithOneTab = { 373, 87 };
+constexpr POINT kMinimize = { 1056, 15 };
+constexpr POINT kRestore = { 60, 680 };
+
+// tests.html, a partir de la esquina del hueco de contenido
+constexpr POINT kClickMe = { 258, 204 };
+constexpr POINT kTextField = { 368, 260 };
+constexpr POINT kDropdown = { 286, 316 };
+constexpr POINT kDropdownThird = { 286, 400 };
+
+// Colores esperados en las capturas.
+constexpr uint32_t kDesktopColor = 0x027676;
+constexpr uint32_t kDropdownHighlight = 0x1967D2;
+constexpr uint32_t kTitleBarColor = 0x073DA5;
 
 struct Stats {
 	int uploads = 0;
@@ -27,17 +55,28 @@ struct Stats {
 BrowserClient gClient;
 OverlayRenderer gRenderer;
 IDirect3DDevice9* gDevice = nullptr;
-int gWidth = 0;
-int gHeight = 0;
+Stats gStats;
+std::string gOutput;
 float gCursorX = 40.0f;
 float gCursorY = 40.0f;
+int gFailures = 0;
+std::vector<uint32_t> gLastShot;
 
-void RenderFrame(Stats& stats) {
+// Comprueba un píxel de la última captura: que pase la prueba no basta si lo dibujado está mal.
+void ExpectPixel(const char* what, POINT point, uint32_t expected) {
+	const uint32_t actual = gLastShot.empty() ? 0 : gLastShot[size_t(point.y) * gWidth + point.x] & 0xFFFFFF;
+	if (actual != expected) {
+		printf("FAIL: %s: pixel %06X, expected %06X\n", what, actual, expected);
+		++gFailures;
+	}
+}
+
+void RenderFrame() {
 	if (const uint8_t* pixels = gClient.AcquireFrame()) {
 		if (gRenderer.Upload(gDevice, pixels, gClient.Width(), gClient.Height(), gClient.Stride())) {
-			++stats.uploads;
-			stats.uploadMs += gRenderer.LastUploadMs();
-			stats.uploadMaxMs = (std::max)(stats.uploadMaxMs, gRenderer.LastUploadMs());
+			++gStats.uploads;
+			gStats.uploadMs += gRenderer.LastUploadMs();
+			gStats.uploadMaxMs = (std::max)(gStats.uploadMaxMs, gRenderer.LastUploadMs());
 		}
 	}
 
@@ -46,84 +85,114 @@ void RenderFrame(Stats& stats) {
 	gRenderer.Draw(gDevice, float(gWidth), float(gHeight), gCursorX, gCursorY, gClient.Cursor());
 	gDevice->EndScene();
 	gDevice->Present(nullptr, nullptr, nullptr, nullptr);
-	++stats.draws;
+	++gStats.draws;
 }
 
-void Run(int milliseconds, Stats& stats) {
+void Run(int milliseconds) {
 	const DWORD start = GetTickCount();
 	while (GetTickCount() - start < DWORD(milliseconds)) {
 		MSG message;
 		while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&message);
-		RenderFrame(stats);
+		RenderFrame();
 		Sleep(1);
 	}
 }
 
 // Guarda lo que hay realmente en el búfer trasero, no lo que envió el helper.
-bool Screenshot(const std::string& path, uint32_t* centerPixel = nullptr) {
+void Shot(const char* name) {
 	IDirect3DSurface9* target = nullptr;
 	IDirect3DSurface9* copy = nullptr;
-	if (FAILED(gDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &target))) return false;
-
 	bool ok = false;
-	if (SUCCEEDED(gDevice->CreateOffscreenPlainSurface(gWidth, gHeight, D3DFMT_X8R8G8B8, D3DPOOL_SYSTEMMEM, &copy, nullptr)) &&
+
+	if (SUCCEEDED(gDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &target)) &&
+		SUCCEEDED(gDevice->CreateOffscreenPlainSurface(gWidth, gHeight, D3DFMT_X8R8G8B8, D3DPOOL_SYSTEMMEM, &copy, nullptr)) &&
 		SUCCEEDED(gDevice->GetRenderTargetData(target, copy))) {
 		D3DLOCKED_RECT locked;
 		if (SUCCEEDED(copy->LockRect(&locked, nullptr, D3DLOCK_READONLY))) {
-			std::ofstream file(path, std::ios::binary);
+			std::ofstream file(gOutput + "\\" + name + ".raw", std::ios::binary);
+			gLastShot.resize(size_t(gWidth) * gHeight);
 			for (int y = 0; y < gHeight; ++y) {
 				file.write(static_cast<const char*>(locked.pBits) + y * locked.Pitch, gWidth * 4);
+				std::memcpy(&gLastShot[size_t(y) * gWidth], static_cast<const char*>(locked.pBits) + y * locked.Pitch, gWidth * 4);
 			}
-			if (centerPixel) {
-				*centerPixel = *reinterpret_cast<const uint32_t*>(static_cast<const char*>(locked.pBits) + (gHeight / 2) * locked.Pitch + (gWidth / 2) * 4);
-			}
+			// El fondo de Clear es magenta: si sigue ahí, la interfaz no se ha dibujado.
+			const uint32_t center = *reinterpret_cast<const uint32_t*>(static_cast<const char*>(locked.pBits) + (gHeight / 2) * locked.Pitch + (gWidth / 2) * 4);
+			ok = file.good() && (center & 0xFFFFFF) != 0xFF00FF;
 			copy->UnlockRect();
-			ok = file.good();
 		}
 	}
 	if (copy) copy->Release();
-	target->Release();
-	return ok;
-}
+	if (target) target->Release();
 
-void Click(int x, int y, Stats& stats) {
-	gCursorX = float(x);
-	gCursorY = float(y);
-	gClient.Send({ ef::EventType::MouseMove, x, y });
-	Run(100, stats);
-	gClient.Send({ ef::EventType::MouseDown, x, y, 0, 0, ef::kModLeftMouse });
-	gClient.Send({ ef::EventType::MouseUp, x, y, 0, 0, 0 });
-	Run(200, stats);
-}
-
-void TypeText(const char* text, Stats& stats) {
-	for (const char* c = text; *c; ++c) {
-		gClient.Send({ ef::EventType::Char, 0, 0, *c, 0, 0 });
-		Run(20, stats);
+	if (!ok) {
+		printf("FAIL: capture %s\n", name);
+		++gFailures;
 	}
 }
 
-void Report(const char* name, const Stats& stats, int milliseconds, uint32_t paints) {
-	printf("%-10s draws %.1f/s | browser %.1f frames/s | uploads %.1f/s | upload avg %.2f ms, max %.2f ms\n", name,
-		stats.draws * 1000.0 / milliseconds, paints * 1000.0 / milliseconds, stats.uploads * 1000.0 / milliseconds,
-		stats.uploads ? stats.uploadMs / stats.uploads : 0.0, stats.uploadMaxMs);
+void Click(POINT point) {
+	gCursorX = float(point.x);
+	gCursorY = float(point.y);
+	gClient.Send({ ef::EventType::MouseMove, point.x, point.y });
+	Run(120);
+	gClient.Send({ ef::EventType::MouseDown, point.x, point.y, 0, 0, ef::kModLeftMouse });
+	gClient.Send({ ef::EventType::MouseUp, point.x, point.y, 0, 0, 0 });
+	Run(250);
+}
+
+void TypeText(const char* text) {
+	for (const char* c = text; *c; ++c) {
+		gClient.Send({ ef::EventType::Char, 0, 0, *c, 0, 0 });
+		Run(15);
+	}
+}
+
+void Control(int key) {
+	gClient.Send({ ef::EventType::KeyDown, 0, 0, key, 0, ef::kModControl });
+	gClient.Send({ ef::EventType::KeyUp, 0, 0, key, 0, ef::kModControl });
+	Run(400);
+}
+
+void GoTo(const char* address, int wait) {
+	Click(kAddress);
+	TypeText(address);
+	gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_RETURN });
+	gClient.Send({ ef::EventType::Char, 0, 0, '\r' });
+	gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_RETURN });
+	Run(wait);
+}
+
+void Measure(const char* name, int milliseconds, bool scroll) {
+	gStats = {};
+	const uint32_t paints = gClient.PaintCount();
+	const DWORD start = GetTickCount();
+	int direction = -120;
+	int ticks = 0;
+	while (GetTickCount() - start < DWORD(milliseconds)) {
+		if (scroll) {
+			gClient.Send({ ef::EventType::Wheel, gWidth / 2, gHeight / 2, 0, direction, 0 });
+			if (++ticks % 30 == 0) direction = -direction;
+		}
+		Run(16);
+	}
+	printf("%-14s draws %.1f/s | browser %.1f frames/s | uploads %.1f/s | upload avg %.2f ms, max %.2f ms\n", name,
+		gStats.draws * 1000.0 / milliseconds, (gClient.PaintCount() - paints) * 1000.0 / milliseconds,
+		gStats.uploads * 1000.0 / milliseconds, gStats.uploads ? gStats.uploadMs / gStats.uploads : 0.0, gStats.uploadMaxMs);
 }
 
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
-	if (argc != 6) {
-		puts("usage: harness <helper.exe> <url> <width> <height> <output directory>");
+	if (argc != 4) {
+		puts("usage: harness <helper.exe> <shell url> <output directory>");
 		return 2;
 	}
 
 	const std::wstring helper = argv[1];
 	const std::wstring url = argv[2];
-	gWidth = _wtoi(argv[3]);
-	gHeight = _wtoi(argv[4]);
 	char outputBuffer[MAX_PATH];
-	WideCharToMultiByte(CP_UTF8, 0, argv[5], -1, outputBuffer, MAX_PATH, nullptr, nullptr);
-	const std::string output = outputBuffer;
+	WideCharToMultiByte(CP_UTF8, 0, argv[3], -1, outputBuffer, MAX_PATH, nullptr, nullptr);
+	gOutput = outputBuffer;
 
 	WNDCLASSW windowClass{};
 	windowClass.lpfnWndProc = DefWindowProcW;
@@ -162,7 +231,6 @@ int wmain(int argc, wchar_t** argv) {
 	}
 	gClient.Send({ ef::EventType::Show });
 
-	Stats startup;
 	while (!gRenderer.HasFrame()) {
 		if (gClient.HasExited()) {
 			puts("FAIL: the helper exited during startup");
@@ -172,104 +240,109 @@ int wmain(int argc, wchar_t** argv) {
 			puts("FAIL: no frame within 30 s");
 			return 1;
 		}
-		Run(10, startup);
+		Run(10);
 	}
 	printf("first frame after %lu ms\n", GetTickCount() - launch);
+	Run(800);
+	Shot("01_desktop");
+	ExpectPixel("desktop", { 1200, 400 }, kDesktopColor);
 
-	Run(2500, startup);
+	// Escritorio -> navegador con su página de inicio.
+	Click(kIconInternet);
+	Run(1200);
+	Shot("02_home");
 
-	uint32_t center = 0;
-	if (!Screenshot(output + "\\1_loaded.raw", &center)) {
-		puts("FAIL: could not read the back buffer");
-		return 1;
-	}
-	// El fondo de Clear es magenta: si sigue ahí, la página no se ha dibujado.
-	if ((center & 0xFFFFFF) == 0xFF00FF) {
-		puts("FAIL: the page did not reach the back buffer");
-		return 1;
-	}
+	// Barra de direcciones -> sitio local, con entrada en la página.
+	GoTo("www.eyefinder.info/tests.html", 1200);
+	Click(kClickMe);
+	Run(600);
+	Click(kClickMe);
+	Click(kTextField);
+	TypeText("grove street");
+	Run(300);
+	Shot("03_input");
+	Click(kDropdown);
+	Run(300);
+	Shot("04_dropdown");
+	ExpectPixel("open dropdown", { 340, 351 }, kDropdownHighlight);
+	Click(kDropdownThird);
+	Run(300);
+	Shot("05_picked");
 
-	// Entrada: coordenadas de ui/start.html con su disposición por defecto.
-	Stats input;
-	if (url.find(L"start.html") != std::wstring::npos && url.find(L"animate") == std::wstring::npos) {
-		Click(90, 344, input);   // Botón "Click me"
-		Run(600, input);         // Dos clics separados, no un doble clic.
-		Click(90, 344, input);
-		Click(200, 400, input);  // Campo de texto
-		TypeText("grove street", input);
-		Run(300, input);
-		Screenshot(output + "\\2_input.raw");
+	Measure("idle", 3000, false);
+	Measure("scrolling", 5000, true);
 
-		Click(118, 456, input);  // Lista desplegable: Chromium la pinta aparte.
-		Run(400, input);
-		Screenshot(output + "\\2_dropdown.raw");
-		Click(118, 515, input);  // Tercera opción
-		Run(400, input);
-		Screenshot(output + "\\2_picked.raw");
-	}
+	// Segunda pestaña -> internet real, sin perder la primera.
+	Click(kNewTabWithOneTab);
+	Run(1000);
+	GoTo("https://en.wikipedia.org/wiki/Grand_Theft_Auto:_San_Andreas", 5000);
+	Shot("06_second_tab_real_site");
+	Measure("real site", 5000, true);
 
-	// Medida 1: página en reposo.
-	Stats idle;
-	uint32_t paints = gClient.PaintCount();
-	Run(3000, idle);
-	Report("idle", idle, 3000, gClient.PaintCount() - paints);
+	Click(kTab1);
+	Run(500);
+	Shot("07_back_on_first_tab");
+	Click(kTab2);
+	Run(500);
+	Shot("08_back_on_second_tab");
 
-	// Medida 2: desplazamiento continuo.
-	Stats scroll;
-	paints = gClient.PaintCount();
-	const DWORD scrollStart = GetTickCount();
-	int direction = -120;
-	int ticks = 0;
-	while (GetTickCount() - scrollStart < 5000) {
-		gClient.Send({ ef::EventType::Wheel, gWidth / 2, gHeight / 2, 0, direction, 0 });
-		if (++ticks % 30 == 0) direction = -direction;
-		Run(16, scroll);
-	}
-	Report("scrolling", scroll, 5000, gClient.PaintCount() - paints);
-	Screenshot(output + "\\3_scrolled.raw");
+	// Atrás y adelante, en la pestaña 2: Wikipedia <- inicio.
+	Click(kBack);
+	Run(1000);
+	Shot("09_after_back");
+	Click(kForward);
+	Run(2500);
+	Shot("10_after_forward");
 
-	// Medida 3: lo que haya en la página durante otros 5 s (con ?animate es el peor caso).
-	Stats busy;
-	paints = gClient.PaintCount();
-	Run(5000, busy);
-	Report("page", busy, 5000, gClient.PaintCount() - paints);
+	// Atajos.
+	Control('T');
+	Run(800);
+	Shot("11_ctrl_t");
+	Control('W');
+	Run(400);
+	Shot("12_ctrl_w");
 
-	// Internet real desde la barra de direcciones: teclado, Enter y red de extremo a extremo.
-	if (url.find(L"start.html") != std::wstring::npos && url.find(L"animate") == std::wstring::npos) {
-		gClient.Send({ ef::EventType::Wheel, gWidth / 2, gHeight / 2, 0, 100000, 0 });
-		Run(600, busy);
-		Click(660, 35, busy);
-		gClient.Send({ ef::EventType::KeyDown, 0, 0, 'A', 0, ef::kModControl });
-		gClient.Send({ ef::EventType::KeyUp, 0, 0, 'A', 0, ef::kModControl });
-		Run(100, busy);
-		TypeText("https://en.wikipedia.org/wiki/Grand_Theft_Auto:_San_Andreas", busy);
-		gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_RETURN });
-		gClient.Send({ ef::EventType::Char, 0, 0, '\r' });
-		gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_RETURN });
-		Run(6000, busy);
-		Screenshot(output + "\\4_real_site.raw");
+	// Peor caso: una página que se repinta sin parar, en su pestaña.
+	Click(kTab1);
+	GoTo("www.eyefinder.info/tests.html?animate", 1000);
+	Measure("animated page", 5000, false);
 
-		Stats realScroll;
-		paints = gClient.PaintCount();
-		const DWORD realStart = GetTickCount();
-		int realTicks = 0;
-		int realDirection = -120;
-		while (GetTickCount() - realStart < 5000) {
-			gClient.Send({ ef::EventType::Wheel, gWidth / 2, gHeight / 2, 0, realDirection, 0 });
-			if (++realTicks % 30 == 0) realDirection = -realDirection;
-			Run(16, realScroll);
-		}
-		Report("real site", realScroll, 5000, gClient.PaintCount() - paints);
-		Screenshot(output + "\\5_real_site_scrolled.raw");
-	}
+	// Minimizar y restaurar conservan las pestañas.
+	Click(kMinimize);
+	Run(400);
+	Shot("13_minimized");
+	ExpectPixel("minimized window", { 640, 360 }, kDesktopColor);
+	Click(kRestore);
+	Run(500);
+	Shot("14_restored");
+	ExpectPixel("restored window", { 600, 15 }, kTitleBarColor);
 
-	// Volver a mostrar debe producir un fotograma nuevo.
+	// Ocultar y mostrar (menú de pausa, F8) producen un fotograma nuevo.
 	gClient.Send({ ef::EventType::Hide });
-	Run(300, busy);
-	paints = gClient.PaintCount();
+	Run(300);
+	uint32_t paints = gClient.PaintCount();
 	gClient.Send({ ef::EventType::Show });
-	Run(700, busy);
-	printf("frames after hide and show: %u\n", gClient.PaintCount() - paints);
+	Run(700);
+	const uint32_t afterShow = gClient.PaintCount() - paints;
+	printf("frames after hide and show: %u\n", afterShow);
+	if (afterShow == 0) {
+		puts("FAIL: no frame after show");
+		++gFailures;
+	}
+
+	// Log Off debe pedir la vuelta al juego.
+	if (gClient.TakeCloseRequest()) {
+		puts("FAIL: close was requested too early");
+		++gFailures;
+	}
+	Click(kMinimize);
+	Run(300);
+	Click(kIconLogOff);
+	Run(300);
+	if (!gClient.TakeCloseRequest()) {
+		puts("FAIL: Log Off did not request a close");
+		++gFailures;
+	}
 
 	const DWORD stopStart = GetTickCount();
 	gClient.Stop();
@@ -278,6 +351,7 @@ int wmain(int argc, wchar_t** argv) {
 	gRenderer.Release();
 	gDevice->Release();
 	d3d->Release();
-	puts("PASS");
-	return 0;
+
+	puts(gFailures ? "FAIL" : "PASS");
+	return gFailures ? 1 : 0;
 }

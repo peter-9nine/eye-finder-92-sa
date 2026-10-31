@@ -1,47 +1,168 @@
 // Helper de 64 bits: ejecuta Chromium sin ventana y publica los fotogramas en memoria compartida.
+//
+// Hay una vista de interfaz a pantalla completa (ui/shell.html: escritorio y ventana del navegador)
+// y una vista por pestaña. La pestaña activa se compone sobre el hueco que le indica la interfaz.
+// Todo el estado de este archivo vive en el hilo UI de CEF, salvo la cola de eventos.
 #include <windows.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <map>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "include/base/cef_callback.h"
 #include "include/cef_app.h"
 #include "include/cef_client.h"
 #include "include/cef_command_line.h"
+#include "include/cef_parser.h"
+#include "include/cef_scheme.h"
+#include "include/wrapper/cef_closure_task.h"
+#include "include/wrapper/cef_message_router.h"
+#include "include/wrapper/cef_stream_resource_handler.h"
 #include "ipc.h"
 
 namespace {
 
-std::wstring gStartUrl;
+namespace fs = std::filesystem;
+
+std::string gShellUrl;
 ef::Header* gHeader = nullptr;
-HANDLE gBrowserReady = nullptr;
-HANDLE gBrowserClosed = nullptr;
+HANDLE gShellReady = nullptr;
+HANDLE gAllClosed = nullptr;
 HANDLE gQuit = nullptr;
 
-class Client : public CefClient,
-               public CefRenderHandler,
-               public CefLifeSpanHandler,
-               public CefDisplayHandler,
-               public CefLoadHandler,
-               public CefContextMenuHandler,
-               public CefJSDialogHandler {
+class View;
+CefRefPtr<View> gShell;
+std::map<int, CefRefPtr<View>> gTabs;
+int gActiveTab = -1;
+CefRect gContentRect;
+bool gContentVisible = false;
+bool gOverlayVisible = true;
+int gOpenBrowsers = 0;
+bool gClosingAll = false;
+
+View* gHover = nullptr;
+View* gCaptured = nullptr;
+View* gKeyboard = nullptr;
+
+uint32_t gWriterSlot = 0;
+
+void ComposeAndPublish();
+void SetKeyboardTarget(View* view);
+void PublishCursor();
+void CallShell(const std::string& function, CefRefPtr<CefValue> argument);
+
+CefRefPtr<CefValue> StringValue(const std::string& text) {
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetString(text);
+	return value;
+}
+
+// --- Sitios locales: sites/<dominio>/ se sirve como si fuera ese dominio ---
+class SiteHandlerFactory : public CefSchemeHandlerFactory {
 public:
+	explicit SiteHandlerFactory(fs::path root) : root_(std::move(root)) {}
+
+	CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString&, CefRefPtr<CefRequest> request) override {
+		CefURLParts parts;
+		if (!CefParseURL(request->GetURL(), parts)) return nullptr;
+
+		// Un sitio no puede salir de su carpeta.
+		const std::string escaped = CefString(&parts.path).ToString();
+		const std::wstring decoded = CefURIDecode(escaped, true, UU_SPACES).ToWString();
+		fs::path relative = fs::path(decoded).relative_path().lexically_normal();
+		for (const auto& piece : relative) {
+			if (piece == L"..") return NotFound();
+		}
+
+		fs::path file = root_ / relative;
+		std::error_code error;
+		if (relative.empty() || relative == L"." || fs::is_directory(file, error)) file /= L"index.html";
+		if (!fs::is_regular_file(file, error)) return NotFound();
+
+		CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForFile(file.wstring());
+		if (!stream) return NotFound();
+
+		std::string extension = file.extension().string();
+		if (!extension.empty()) extension.erase(0, 1);
+		std::string mime = CefGetMimeType(extension).ToString();
+		if (mime.empty()) mime = "application/octet-stream";
+		return new CefStreamResourceHandler(mime, stream);
+	}
+
+private:
+	static CefRefPtr<CefResourceHandler> NotFound() {
+		static const char kPage[] = "<body style='font:18px Tahoma,sans-serif;margin:40px'><h2>404</h2><p>This page does not exist.</p></body>";
+		CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForData(const_cast<char*>(kPage), sizeof(kPage) - 1);
+		return new CefStreamResourceHandler(404, "Not Found", "text/html", CefResponse::HeaderMap(), stream);
+	}
+
+	fs::path root_;
+
+	IMPLEMENT_REFCOUNTING(SiteHandlerFactory);
+};
+
+// --- Órdenes de la interfaz ---
+void OpenTab(int id, const std::string& url);
+void CloseTab(int id);
+void ActivateTab(int id);
+void SetLayout(int x, int y, int width, int height, bool visible);
+
+class ShellQueryHandler : public CefMessageRouterBrowserSide::Handler {
+public:
+	bool OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int64_t, const CefString& request, bool, CefRefPtr<Callback> callback) override;
+};
+
+class View : public CefClient,
+             public CefRenderHandler,
+             public CefLifeSpanHandler,
+             public CefDisplayHandler,
+             public CefLoadHandler,
+             public CefRequestHandler,
+             public CefContextMenuHandler,
+             public CefJSDialogHandler {
+public:
+	explicit View(int tabId) : tabId_(tabId) {
+		if (IsShell()) {
+			router_ = CefMessageRouterBrowserSide::Create(CefMessageRouterConfig());
+			router_->AddHandler(&queryHandler_, false);
+		}
+	}
+
+	bool IsShell() const { return tabId_ < 0; }
+	int TabId() const { return tabId_; }
+	CefRefPtr<CefBrowser> Browser() const { return browser_; }
+	CefRefPtr<CefBrowserHost> Host() const { return browser_ ? browser_->GetHost() : nullptr; }
+	ef::CursorKind Cursor() const { return cursor_; }
+
+	const uint8_t* Pixels() const {
+		if (composite_.empty()) return base_.empty() ? nullptr : base_.data();
+		return composite_.data();
+	}
+	int PixelWidth() const { return baseWidth_; }
+	int PixelHeight() const { return baseHeight_; }
+
 	CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
 	CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
 	CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
 	CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+	CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
 	CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; }
 	CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
 
-	CefRefPtr<CefBrowser> Browser() const { return browser_; }
+	bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source, CefRefPtr<CefProcessMessage> message) override {
+		return router_ && router_->OnProcessMessageReceived(browser, frame, source, message);
+	}
 
 	// --- Render ---
 	void GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) override {
-		rect = CefRect(0, 0, gHeader->width, gHeader->height);
+		if (IsShell()) rect = CefRect(0, 0, gHeader->width, gHeader->height);
+		else rect = CefRect(0, 0, std::max(gContentRect.width, 1), std::max(gContentRect.height, 1));
 	}
 
 	bool GetScreenInfo(CefRefPtr<CefBrowser>, CefScreenInfo& info) override {
@@ -49,87 +170,126 @@ public:
 		return true;
 	}
 
-	void OnPopupShow(CefRefPtr<CefBrowser> browser, bool show) override {
+	void OnPopupShow(CefRefPtr<CefBrowser>, bool show) override {
 		popupShown_ = show;
-		if (!show) popup_.clear();
-		browser->GetHost()->Invalidate(PET_VIEW);
-	}
-
-	void OnPopupSize(CefRefPtr<CefBrowser>, const CefRect& rect) override {
-		popupRect_ = rect;
-	}
-
-	void OnPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList&, const void* buffer, int width, int height) override {
-		const auto stride = gHeader->stride;
-		const size_t size = size_t(stride) * gHeader->height;
-
-		if (type == PET_VIEW) {
-			if (static_cast<uint32_t>(width) != gHeader->width || static_cast<uint32_t>(height) != gHeader->height) return;
-
-			auto* target = ef::SlotPixels(gHeader, writerSlot_);
-			std::memcpy(target, buffer, size);
-
-			if (popupShown_) {
-				view_.assign(static_cast<const uint8_t*>(buffer), static_cast<const uint8_t*>(buffer) + size);
-				BlitPopup(target);
-			}
-			Publish();
-			return;
+		if (!show) {
+			popup_.clear();
+			composite_.clear();
+			Changed();
 		}
+	}
 
-		// PET_POPUP: las listas desplegables se pintan aparte y hay que componerlas sobre la página.
-		popupWidth_ = width;
-		popupHeight_ = height;
+	void OnPopupSize(CefRefPtr<CefBrowser>, const CefRect& rect) override { popupRect_ = rect; }
+
+	void OnPaint(CefRefPtr<CefBrowser>, PaintElementType type, const RectList&, const void* buffer, int width, int height) override {
 		const auto* source = static_cast<const uint8_t*>(buffer);
-		popup_.assign(source, source + size_t(width) * height * 4);
-
-		if (view_.size() != size) {
-			browser->GetHost()->Invalidate(PET_VIEW);
-			return;
+		if (type == PET_VIEW) {
+			base_.assign(source, source + size_t(width) * height * 4);
+			baseWidth_ = width;
+			baseHeight_ = height;
 		}
-
-		auto* target = ef::SlotPixels(gHeader, writerSlot_);
-		std::memcpy(target, view_.data(), size);
-		BlitPopup(target);
-		Publish();
+		else {
+			popup_.assign(source, source + size_t(width) * height * 4);
+			popupWidth_ = width;
+			popupHeight_ = height;
+		}
+		RebuildComposite();
+		Changed();
 	}
 
 	// --- Ciclo de vida ---
 	void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
 		browser_ = browser;
-		gHeader->state.store(static_cast<uint32_t>(ef::HelperState::Ready), std::memory_order_release);
-		SetEvent(gBrowserReady);
+		++gOpenBrowsers;
+
+		if (IsShell()) {
+			gHeader->state.store(static_cast<uint32_t>(ef::HelperState::Ready), std::memory_order_release);
+			SetEvent(gShellReady);
+			return;
+		}
+
+		const bool visible = gOverlayVisible && tabId_ == gActiveTab;
+		browser->GetHost()->WasHidden(!visible);
+		browser->GetHost()->SetAudioMuted(!gOverlayVisible);
+		if (visible) SetKeyboardTarget(this);
 	}
 
-	void OnBeforeClose(CefRefPtr<CefBrowser>) override {
+	void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+		if (router_) router_->OnBeforeClose(browser);
 		browser_ = nullptr;
-		SetEvent(gBrowserClosed);
+
+		if (gHover == this) gHover = nullptr;
+		if (gCaptured == this) gCaptured = nullptr;
+		if (gKeyboard == this) gKeyboard = nullptr;
+
+		if (--gOpenBrowsers == 0 && gClosingAll) SetEvent(gAllClosed);
 	}
 
-	// No hay ventanas emergentes: se abren en la misma vista.
-	bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>, int, const CefString& targetUrl, const CefString&,
-		WindowOpenDisposition, bool, const CefPopupFeatures&, CefWindowInfo&, CefRefPtr<CefClient>&, CefBrowserSettings&,
+	// Las ventanas emergentes se abren como pestañas nuevas.
+	bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString& targetUrl, const CefString&,
+		CefLifeSpanHandler::WindowOpenDisposition, bool, const CefPopupFeatures&, CefWindowInfo&, CefRefPtr<CefClient>&, CefBrowserSettings&,
 		CefRefPtr<CefDictionaryValue>&, bool*) override {
-		if (!targetUrl.empty()) browser->GetMainFrame()->LoadURL(targetUrl);
+		if (!IsShell() && !targetUrl.empty()) CallShell("openTab", StringValue(targetUrl.ToString()));
 		return true;
 	}
 
-	// --- Pantalla ---
+	// --- Navegación ---
+	bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool, bool) override {
+		const std::string url = request->GetURL().ToString();
+
+		if (IsShell()) {
+			// La interfaz tiene acceso a las órdenes del helper: nunca puede salir de su página.
+			if (url.rfind(gShellUrl, 0) != 0) return true;
+			router_->OnBeforeBrowse(browser, frame);
+			return false;
+		}
+
+		// Sin sandbox, una página no debe poder abrir archivos del disco.
+		return url.rfind("file:", 0) == 0;
+	}
+
+	void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus, int, const CefString&) override {
+		if (router_) router_->OnRenderProcessTerminated(browser);
+	}
+
+	// --- Estado que muestra la interfaz ---
+	void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString& url) override {
+		if (!frame->IsMain() || IsShell()) return;
+		url_ = url.ToString();
+		SendState();
+	}
+
+	void OnTitleChange(CefRefPtr<CefBrowser>, const CefString& title) override {
+		if (IsShell()) return;
+		title_ = title.ToString();
+		SendState();
+	}
+
+	void OnStatusMessage(CefRefPtr<CefBrowser>, const CefString& text) override {
+		if (IsShell() || tabId_ != gActiveTab) return;
+		CallShell("onStatus", StringValue(text.ToString()));
+	}
+
+	void OnLoadingStateChange(CefRefPtr<CefBrowser>, bool loading, bool back, bool forward) override {
+		if (IsShell()) return;
+		loading_ = loading;
+		canBack_ = back;
+		canForward_ = forward;
+		SendState();
+	}
+
 	bool OnCursorChange(CefRefPtr<CefBrowser>, CefCursorHandle, cef_cursor_type_t type, const CefCursorInfo&) override {
-		ef::CursorKind kind = ef::CursorKind::Arrow;
-		if (type == CT_HAND) kind = ef::CursorKind::Hand;
-		else if (type == CT_IBEAM) kind = ef::CursorKind::IBeam;
-		gHeader->cursor.store(static_cast<uint32_t>(kind), std::memory_order_relaxed);
+		cursor_ = type == CT_HAND ? ef::CursorKind::Hand : type == CT_IBEAM ? ef::CursorKind::IBeam : ef::CursorKind::Arrow;
+		PublishCursor();
 		return true;
 	}
 
-	// --- Errores de carga ---
 	void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode code, const CefString& text, const CefString& url) override {
-		if (code == ERR_ABORTED || !frame->IsMain()) return;
-		std::string html = "data:text/html,<body style='font:18px sans-serif;margin:40px'><h2>This page could not be loaded</h2><p>";
-		html += text.ToString() + " (" + std::to_string(static_cast<int>(code)) + ")</p></body>";
-		frame->LoadURL(html);
-		(void)url;
+		if (code == ERR_ABORTED || !frame->IsMain() || IsShell()) return;
+		const std::string html = "<body style='font:18px Tahoma,sans-serif;margin:40px'><h2>This page could not be loaded</h2><p>" +
+			text.ToString() + " (" + std::to_string(static_cast<int>(code)) + ")</p></body>";
+		frame->LoadURL(CefURIEncode("data:text/html," + html, false));
+		url_ = url.ToString();
 	}
 
 	// --- Sin menú contextual ni diálogos nativos de momento: no hay ventana donde mostrarlos ---
@@ -144,45 +304,253 @@ public:
 	}
 
 private:
-	void BlitPopup(uint8_t* target) {
-		if (popup_.empty()) return;
+	void Changed() {
+		if (IsShell() || tabId_ == gActiveTab) ComposeAndPublish();
+	}
 
-		const int viewWidth = static_cast<int>(gHeader->width);
-		const int viewHeight = static_cast<int>(gHeader->height);
+	void RebuildComposite() {
+		if (!popupShown_ || popup_.empty() || base_.empty()) {
+			composite_.clear();
+			return;
+		}
+
+		composite_ = base_;
 		const int left = std::max(popupRect_.x, 0);
 		const int top = std::max(popupRect_.y, 0);
-		const int right = std::min(popupRect_.x + popupWidth_, viewWidth);
-		const int bottom = std::min(popupRect_.y + popupHeight_, viewHeight);
+		const int right = std::min(popupRect_.x + popupWidth_, baseWidth_);
+		const int bottom = std::min(popupRect_.y + popupHeight_, baseHeight_);
+		if (right <= left) return;
 
 		for (int y = top; y < bottom; ++y) {
-			const uint8_t* source = popup_.data() + size_t(y - popupRect_.y) * popupWidth_ * 4 + size_t(left - popupRect_.x) * 4;
-			uint8_t* destination = target + size_t(y) * gHeader->stride + size_t(left) * 4;
-			if (right > left) std::memcpy(destination, source, size_t(right - left) * 4);
+			const uint8_t* source = popup_.data() + (size_t(y - popupRect_.y) * popupWidth_ + (left - popupRect_.x)) * 4;
+			uint8_t* destination = composite_.data() + (size_t(y) * baseWidth_ + left) * 4;
+			std::memcpy(destination, source, size_t(right - left) * 4);
 		}
 	}
 
-	void Publish() {
-		writerSlot_ = gHeader->ready.exchange(writerSlot_ | ef::kNewFrame, std::memory_order_acq_rel) & ~ef::kNewFrame;
-		gHeader->paintCount.fetch_add(1, std::memory_order_relaxed);
+	void SendState() {
+		CefRefPtr<CefDictionaryValue> state = CefDictionaryValue::Create();
+		state->SetInt("id", tabId_);
+		state->SetString("url", url_);
+		state->SetString("title", title_);
+		state->SetBool("loading", loading_);
+		state->SetBool("back", canBack_);
+		state->SetBool("forward", canForward_);
+		CefRefPtr<CefValue> value = CefValue::Create();
+		value->SetDictionary(state);
+		CallShell("onTab", value);
 	}
 
+	const int tabId_;
 	CefRefPtr<CefBrowser> browser_;
-	uint32_t writerSlot_ = 0;
+	CefRefPtr<CefMessageRouterBrowserSide> router_;
+	ShellQueryHandler queryHandler_;
+
+	std::vector<uint8_t> base_;
+	std::vector<uint8_t> popup_;
+	std::vector<uint8_t> composite_;
+	int baseWidth_ = 0;
+	int baseHeight_ = 0;
 	bool popupShown_ = false;
 	CefRect popupRect_;
 	int popupWidth_ = 0;
 	int popupHeight_ = 0;
-	std::vector<uint8_t> popup_;
-	std::vector<uint8_t> view_;
 
-	IMPLEMENT_REFCOUNTING(Client);
+	ef::CursorKind cursor_ = ef::CursorKind::Arrow;
+	std::string url_;
+	std::string title_;
+	bool loading_ = false;
+	bool canBack_ = false;
+	bool canForward_ = false;
+
+	IMPLEMENT_REFCOUNTING(View);
 };
 
-CefRefPtr<Client> gClient;
+void CallShell(const std::string& function, CefRefPtr<CefValue> argument) {
+	if (!gShell || !gShell->Browser()) return;
+	const std::string json = CefWriteJSON(argument, JSON_WRITER_DEFAULT).ToString();
+	gShell->Browser()->GetMainFrame()->ExecuteJavaScript("ef." + function + "(" + json + ")", gShellUrl, 0);
+}
 
-class App : public CefApp, public CefBrowserProcessHandler {
+View* ActiveTabView() {
+	auto found = gTabs.find(gActiveTab);
+	return found == gTabs.end() ? nullptr : found->second.get();
+}
+
+void ComposeAndPublish() {
+	if (!gShell || !gShell->Pixels()) return;
+
+	const int viewWidth = static_cast<int>(gHeader->width);
+	const int viewHeight = static_cast<int>(gHeader->height);
+	if (gShell->PixelWidth() != viewWidth || gShell->PixelHeight() != viewHeight) return;
+
+	uint8_t* target = ef::SlotPixels(gHeader, gWriterSlot);
+	std::memcpy(target, gShell->Pixels(), size_t(gHeader->stride) * gHeader->height);
+
+	View* tab = gContentVisible ? ActiveTabView() : nullptr;
+	if (tab && tab->Pixels()) {
+		const int left = std::max(gContentRect.x, 0);
+		const int top = std::max(gContentRect.y, 0);
+		const int right = std::min({ gContentRect.x + gContentRect.width, gContentRect.x + tab->PixelWidth(), viewWidth });
+		const int bottom = std::min({ gContentRect.y + gContentRect.height, gContentRect.y + tab->PixelHeight(), viewHeight });
+
+		if (right > left) {
+			for (int y = top; y < bottom; ++y) {
+				const uint8_t* source = tab->Pixels() + (size_t(y - gContentRect.y) * tab->PixelWidth() + (left - gContentRect.x)) * 4;
+				std::memcpy(target + (size_t(y) * viewWidth + left) * 4, source, size_t(right - left) * 4);
+			}
+		}
+	}
+
+	gWriterSlot = gHeader->ready.exchange(gWriterSlot | ef::kNewFrame, std::memory_order_acq_rel) & ~ef::kNewFrame;
+	gHeader->paintCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+void PublishCursor() {
+	const ef::CursorKind kind = gHover ? gHover->Cursor() : ef::CursorKind::Arrow;
+	gHeader->cursor.store(static_cast<uint32_t>(kind), std::memory_order_relaxed);
+}
+
+void SetKeyboardTarget(View* view) {
+	if (gKeyboard == view) return;
+	if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(false);
+	gKeyboard = view;
+	if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(true);
+}
+
+// La pestaña activa solo es visible con la ventana abierta y el navegador en pantalla.
+void ApplyTabVisibility() {
+	for (auto& [id, tab] : gTabs) {
+		if (!tab->Host()) continue;
+		tab->Host()->WasHidden(!(gOverlayVisible && gContentVisible && id == gActiveTab));
+	}
+}
+
+void OpenTab(int id, const std::string& url) {
+	CefRefPtr<View> view = new View(id);
+	gTabs[id] = view;
+
+	CefWindowInfo window;
+	window.SetAsWindowless(nullptr);
+
+	CefBrowserSettings settings;
+	settings.windowless_frame_rate = 60;
+	settings.background_color = CefColorSetARGB(255, 255, 255, 255);
+
+	CefBrowserHost::CreateBrowser(window, view, url, settings, nullptr, nullptr);
+}
+
+void CloseTab(int id) {
+	auto found = gTabs.find(id);
+	if (found == gTabs.end()) return;
+
+	CefRefPtr<View> view = found->second;
+	gTabs.erase(found);
+	if (gActiveTab == id) gActiveTab = -1;
+	if (view->Host()) view->Host()->CloseBrowser(true);
+	ComposeAndPublish();
+}
+
+void ActivateTab(int id) {
+	gActiveTab = id;
+	ApplyTabVisibility();
+
+	if (View* tab = ActiveTabView()) {
+		if (tab->Host()) {
+			tab->Host()->Invalidate(PET_VIEW);
+			SetKeyboardTarget(tab);
+		}
+	}
+	ComposeAndPublish();
+}
+
+void SetLayout(int x, int y, int width, int height, bool visible) {
+	const bool resized = width != gContentRect.width || height != gContentRect.height;
+	gContentRect = CefRect(x, y, width, height);
+	gContentVisible = visible;
+
+	if (resized) {
+		for (auto& [id, tab] : gTabs) {
+			if (tab->Host()) tab->Host()->WasResized();
+		}
+	}
+	ApplyTabVisibility();
+	if (!visible) SetKeyboardTarget(gShell.get());
+	ComposeAndPublish();
+}
+
+bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int64_t, const CefString& request, bool, CefRefPtr<Callback> callback) {
+	// Solo la interfaz, nunca una página web, puede dar órdenes.
+	if (!gShell || !gShell->Browser() || !browser->IsSame(gShell->Browser()) || !frame->IsMain() ||
+		frame->GetURL().ToString().rfind(gShellUrl, 0) != 0) {
+		return false;
+	}
+
+	CefRefPtr<CefValue> parsed = CefParseJSON(request, JSON_PARSER_RFC);
+	if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) return false;
+	CefRefPtr<CefDictionaryValue> message = parsed->GetDictionary();
+	const std::string command = message->GetString("cmd").ToString();
+
+	View* active = ActiveTabView();
+	CefRefPtr<CefBrowser> page = active ? active->Browser() : nullptr;
+
+	if (command == "layout") {
+		SetLayout(message->GetInt("x"), message->GetInt("y"), message->GetInt("w"), message->GetInt("h"), message->GetBool("visible"));
+	}
+	else if (command == "openTab") {
+		OpenTab(message->GetInt("id"), message->GetString("url").ToString());
+	}
+	else if (command == "closeTab") {
+		CloseTab(message->GetInt("id"));
+	}
+	else if (command == "activateTab") {
+		ActivateTab(message->GetInt("id"));
+	}
+	else if (command == "navigate") {
+		if (page) {
+			page->GetMainFrame()->LoadURL(message->GetString("url"));
+			SetKeyboardTarget(active);
+		}
+	}
+	else if (command == "back") {
+		if (page) page->GoBack();
+	}
+	else if (command == "forward") {
+		if (page) page->GoForward();
+	}
+	else if (command == "reload") {
+		if (page) page->Reload();
+	}
+	else if (command == "stop") {
+		if (page) page->StopLoad();
+	}
+	else if (command == "logOff") {
+		gHeader->closeRequest.store(1, std::memory_order_release);
+	}
+	else {
+		return false;
+	}
+
+	callback->Success("");
+	return true;
+}
+
+void CreateShell() {
+	CefWindowInfo window;
+	window.SetAsWindowless(nullptr);
+
+	CefBrowserSettings settings;
+	settings.windowless_frame_rate = 60;
+	settings.background_color = CefColorSetARGB(255, 0, 0, 0);
+
+	gShell = new View(-1);
+	CefBrowserHost::CreateBrowser(window, gShell, gShellUrl, settings, nullptr, nullptr);
+}
+
+class App : public CefApp, public CefBrowserProcessHandler, public CefRenderProcessHandler {
 public:
 	CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override { return this; }
+	CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override { return this; }
 
 	void OnBeforeCommandLineProcessing(const CefString& processType, CefRefPtr<CefCommandLine> commandLine) override {
 		if (processType.empty()) {
@@ -193,43 +561,133 @@ public:
 	}
 
 	void OnContextInitialized() override {
-		CefWindowInfo window;
-		window.SetAsWindowless(nullptr);
+		RegisterSites();
+		CreateShell();
+	}
 
-		CefBrowserSettings settings;
-		settings.windowless_frame_rate = 60;
-		settings.background_color = CefColorSetARGB(255, 255, 255, 255);
+	// --- Proceso de renderizado ---
+	void OnWebKitInitialized() override {
+		router_ = CefMessageRouterRendererSide::Create(CefMessageRouterConfig());
+	}
 
-		gClient = new Client();
-		CefBrowserHost::CreateBrowser(window, gClient, gStartUrl, settings, nullptr, nullptr);
+	void OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) override {
+		// window.cefQuery solo existe en la interfaz, que se carga desde el disco. Las webs no lo ven.
+		if (router_ && frame->GetURL().ToString().rfind("file:", 0) == 0) router_->OnContextCreated(browser, frame, context);
+	}
+
+	void OnContextReleased(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) override {
+		if (router_) router_->OnContextReleased(browser, frame, context);
+	}
+
+	bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source, CefRefPtr<CefProcessMessage> message) override {
+		return router_ && router_->OnProcessMessageReceived(browser, frame, source, message);
 	}
 
 private:
+	static void RegisterSites() {
+		wchar_t buffer[MAX_PATH]{};
+		GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+		const fs::path sites = fs::path(buffer).parent_path() / L"sites";
+
+		std::error_code error;
+		for (const auto& entry : fs::directory_iterator(sites, error)) {
+			if (!entry.is_directory()) continue;
+			const CefString domain = entry.path().filename().wstring();
+			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path());
+			CefRegisterSchemeHandlerFactory("https", domain, factory);
+			CefRegisterSchemeHandlerFactory("http", domain, factory);
+		}
+	}
+
+	CefRefPtr<CefMessageRouterRendererSide> router_;
+
 	IMPLEMENT_REFCOUNTING(App);
 };
 
-void HandleEvent(const ef::Event& event, CefRefPtr<CefBrowser> browser) {
+// --- Entrada ---
+View* HitTest(int x, int y) {
+	if (gContentVisible && ActiveTabView() && x >= gContentRect.x && y >= gContentRect.y &&
+		x < gContentRect.x + gContentRect.width && y < gContentRect.y + gContentRect.height) {
+		return ActiveTabView();
+	}
+	return gShell.get();
+}
+
+CefMouseEvent MouseFor(View* view, const ef::Event& event) {
+	CefMouseEvent mouse;
+	mouse.x = view->IsShell() ? event.x : event.x - gContentRect.x;
+	mouse.y = view->IsShell() ? event.y : event.y - gContentRect.y;
+	mouse.modifiers = event.modifiers;
+	return mouse;
+}
+
+void UpdateHover(View* target, const ef::Event& event) {
+	if (gHover == target) return;
+	if (gHover && gHover->Host()) gHover->Host()->SendMouseMoveEvent(MouseFor(gHover, event), true);
+	gHover = target;
+	PublishCursor();
+}
+
+// Devuelve true si el atajo era del navegador y no debe llegar a la página.
+bool HandleShortcut(const ef::Event& event) {
+	View* tab = ActiveTabView();
+	CefRefPtr<CefBrowser> page = tab ? tab->Browser() : nullptr;
+	const bool control = (event.modifiers & ef::kModControl) != 0;
+	const bool shift = (event.modifiers & ef::kModShift) != 0;
+	const bool alt = (event.modifiers & ef::kModAlt) != 0;
+
+	if (event.a == VK_F5) {
+		if (page && gContentVisible) page->Reload();
+		return true;
+	}
+	if (alt && event.a == VK_LEFT) {
+		if (page && gContentVisible) page->GoBack();
+		return true;
+	}
+	if (alt && event.a == VK_RIGHT) {
+		if (page && gContentVisible) page->GoForward();
+		return true;
+	}
+
+	if (!control) return false;
+	const char* action = nullptr;
+	switch (event.a) {
+	case 'T': action = "newTab"; break;
+	case 'W': action = "closeTab"; break;
+	case 'L': action = "focusAddress"; break;
+	case VK_TAB: action = shift ? "previousTab" : "nextTab"; break;
+	default: return false;
+	}
+	CallShell("shortcut", StringValue(action));
+	if (event.a == 'L') SetKeyboardTarget(gShell.get());
+	return true;
+}
+
+void HandleEvent(const ef::Event& event) {
 	static DWORD lastClickTime = 0;
 	static int lastClickX = 0;
 	static int lastClickY = 0;
 	static int lastClickButton = -1;
 	static int clickCount = 1;
 
-	CefRefPtr<CefBrowserHost> host = browser->GetHost();
-
-	CefMouseEvent mouse;
-	mouse.x = event.x;
-	mouse.y = event.y;
-	mouse.modifiers = event.modifiers;
-
 	const auto button = event.a == 1 ? MBT_MIDDLE : (event.a == 2 ? MBT_RIGHT : MBT_LEFT);
 
 	switch (event.type) {
-	case ef::EventType::MouseMove:
-		host->SendMouseMoveEvent(mouse, false);
+	case ef::EventType::MouseMove: {
+		View* target = gCaptured ? gCaptured : HitTest(event.x, event.y);
+		UpdateHover(target, event);
+		if (target && target->Host()) target->Host()->SendMouseMoveEvent(MouseFor(target, event), false);
 		break;
+	}
 
 	case ef::EventType::MouseDown: {
+		View* target = HitTest(event.x, event.y);
+		UpdateHover(target, event);
+		gCaptured = target;
+		SetKeyboardTarget(target);
+		// Al navegar, Chromium puede cambiar el widget interno y este nace sin foco: sin él no se abren las listas.
+		if (target && target->Host()) target->Host()->SetFocus(true);
+
 		const DWORD now = GetTickCount();
 		const bool repeat = event.a == lastClickButton && now - lastClickTime < GetDoubleClickTime() &&
 			abs(event.x - lastClickX) <= 4 && abs(event.y - lastClickY) <= 4;
@@ -238,34 +696,30 @@ void HandleEvent(const ef::Event& event, CefRefPtr<CefBrowser> browser) {
 		lastClickX = event.x;
 		lastClickY = event.y;
 		lastClickButton = event.a;
-		host->SendMouseClickEvent(mouse, button, false, clickCount);
+
+		if (target && target->Host()) target->Host()->SendMouseClickEvent(MouseFor(target, event), button, false, clickCount);
 		break;
 	}
 
-	case ef::EventType::MouseUp:
-		host->SendMouseClickEvent(mouse, button, true, clickCount);
+	case ef::EventType::MouseUp: {
+		View* target = gCaptured ? gCaptured : HitTest(event.x, event.y);
+		gCaptured = nullptr;
+		if (target && target->Host()) target->Host()->SendMouseClickEvent(MouseFor(target, event), button, true, clickCount);
 		break;
+	}
 
-	case ef::EventType::Wheel:
-		host->SendMouseWheelEvent(mouse, event.a, event.b);
+	case ef::EventType::Wheel: {
+		View* target = HitTest(event.x, event.y);
+		if (target && target->Host()) target->Host()->SendMouseWheelEvent(MouseFor(target, event), event.a, event.b);
 		break;
+	}
 
 	case ef::EventType::KeyDown:
-		if (event.a == VK_F5) {
-			browser->Reload();
-			break;
-		}
-		if ((event.modifiers & ef::kModAlt) && event.a == VK_LEFT) {
-			browser->GoBack();
-			break;
-		}
-		if ((event.modifiers & ef::kModAlt) && event.a == VK_RIGHT) {
-			browser->GoForward();
-			break;
-		}
+		if (HandleShortcut(event)) break;
 		[[fallthrough]];
 	case ef::EventType::KeyUp:
 	case ef::EventType::Char: {
+		if (!gKeyboard || !gKeyboard->Host()) break;
 		CefKeyEvent key;
 		key.type = event.type == ef::EventType::KeyDown ? KEYEVENT_RAWKEYDOWN
 			: event.type == ef::EventType::KeyUp ? KEYEVENT_KEYUP : KEYEVENT_CHAR;
@@ -273,23 +727,41 @@ void HandleEvent(const ef::Event& event, CefRefPtr<CefBrowser> browser) {
 		key.native_key_code = event.b;
 		key.modifiers = event.modifiers;
 		key.is_system_key = (event.modifiers & ef::kModAlt) != 0;
-		host->SendKeyEvent(key);
+		gKeyboard->Host()->SendKeyEvent(key);
 		break;
 	}
 
 	case ef::EventType::Show:
-		host->WasHidden(false);
-		host->SetFocus(true);
-		host->Invalidate(PET_VIEW);
+		gOverlayVisible = true;
+		if (gShell->Host()) {
+			gShell->Host()->WasHidden(false);
+			gShell->Host()->Invalidate(PET_VIEW);
+		}
+		for (auto& [id, tab] : gTabs) {
+			if (tab->Host()) tab->Host()->SetAudioMuted(false);
+		}
+		ApplyTabVisibility();
+		if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(true);
+		else SetKeyboardTarget(gShell.get());
+		if (View* tab = ActiveTabView()) {
+			if (tab->Host()) tab->Host()->Invalidate(PET_VIEW);
+		}
+		ComposeAndPublish();
 		break;
 
 	case ef::EventType::Hide:
-		host->SetFocus(false);
-		host->WasHidden(true);
+		// Con el juego delante, las páginas no deben seguir sonando.
+		gOverlayVisible = false;
+		if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(false);
+		if (gShell->Host()) gShell->Host()->WasHidden(true);
+		for (auto& [id, tab] : gTabs) {
+			if (tab->Host()) tab->Host()->SetAudioMuted(true);
+		}
+		ApplyTabVisibility();
 		break;
 
 	case ef::EventType::Invalidate:
-		host->Invalidate(PET_VIEW);
+		ComposeAndPublish();
 		break;
 
 	case ef::EventType::Quit:
@@ -297,9 +769,21 @@ void HandleEvent(const ef::Event& event, CefRefPtr<CefBrowser> browser) {
 	}
 }
 
+void CloseEverything() {
+	gClosingAll = true;
+	if (gOpenBrowsers == 0) {
+		SetEvent(gAllClosed);
+		return;
+	}
+	for (auto& [id, tab] : gTabs) {
+		if (tab->Host()) tab->Host()->CloseBrowser(true);
+	}
+	if (gShell && gShell->Host()) gShell->Host()->CloseBrowser(true);
+}
+
 void PumpEvents(HANDLE wake, HANDLE parent) {
-	// Esperamos al navegador sin perder de vista al juego.
-	HANDLE startWaits[] = { gBrowserReady, parent };
+	// Esperamos a la interfaz sin perder de vista al juego.
+	HANDLE startWaits[] = { gShellReady, parent };
 	if (WaitForMultipleObjects(parent ? 2 : 1, startWaits, FALSE, INFINITE) != WAIT_OBJECT_0) {
 		SetEvent(gQuit);
 		return;
@@ -315,7 +799,6 @@ void PumpEvents(HANDLE wake, HANDLE parent) {
 
 		uint32_t read = gHeader->ringRead.load(std::memory_order_relaxed);
 		const uint32_t write = gHeader->ringWrite.load(std::memory_order_acquire);
-		CefRefPtr<CefBrowser> browser = gClient->Browser();
 
 		while (read != write) {
 			const ef::Event event = gHeader->ring[read % ef::kRingSize];
@@ -326,7 +809,7 @@ void PumpEvents(HANDLE wake, HANDLE parent) {
 				SetEvent(gQuit);
 				return;
 			}
-			if (browser) HandleEvent(event, browser);
+			CefPostTask(TID_UI, base::BindOnce(&HandleEvent, event));
 		}
 	}
 }
@@ -351,8 +834,8 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 	commandLine->InitFromString(GetCommandLineW());
 	const std::wstring section = commandLine->GetSwitchValue("ef-shm").ToWString();
 	const std::wstring parentId = commandLine->GetSwitchValue("ef-parent").ToWString();
-	gStartUrl = commandLine->GetSwitchValue("ef-url").ToWString();
-	if (section.empty() || gStartUrl.empty()) return 2;
+	gShellUrl = commandLine->GetSwitchValue("ef-url").ToString();
+	if (section.empty() || gShellUrl.empty()) return 2;
 
 	HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, section.c_str());
 	if (!mapping) return 3;
@@ -365,8 +848,8 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 
 	HANDLE parent = parentId.empty() ? nullptr : OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(std::stoul(parentId)));
 
-	gBrowserReady = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-	gBrowserClosed = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	gShellReady = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	gAllClosed = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 	gQuit = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
 	const std::wstring cache = CachePath();
@@ -389,11 +872,9 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 	WaitForSingleObject(gQuit, INFINITE);
 	pump.join();
 
-	if (gClient && gClient->Browser()) {
-		gClient->Browser()->GetHost()->CloseBrowser(true);
-		WaitForSingleObject(gBrowserClosed, 3000);
-	}
-	gClient = nullptr;
+	CefPostTask(TID_UI, base::BindOnce(&CloseEverything));
+	WaitForSingleObject(gAllClosed, 3000);
+
 	CefShutdown();
 	return 0;
 }

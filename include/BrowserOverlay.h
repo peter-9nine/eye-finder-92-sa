@@ -3,7 +3,7 @@
 #include "BrowserClient.h"
 #include "OverlayRenderer.h"
 
-// Conecta el navegador con el juego: abrir y cerrar, entrada, controles y dibujo.
+// Conecta el navegador con el juego: abrir y cerrar, entrada, controles, menú de pausa y dibujo.
 class BrowserOverlay {
 public:
 	void InstallWindowHook();
@@ -16,17 +16,27 @@ public:
 	void OnDeviceReset();
 	void Shutdown();
 
-	bool IsOpen() const { return open_; }
+	// El juego no debe recentrar el cursor mientras el navegador lo usa.
+	bool UsesCursor() const;
 
 private:
+	// Cerrado -> fundido a negro del juego -> abierto -> fundido a negro del navegador -> cerrado.
+	enum class Phase { Closed, FadingGameOut, Open, FadingBrowserOut };
+
 	static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
 
-	void Open();
-	void Close();
+	void BeginOpening();
+	void FinishOpening();
+	void BeginClosing();
+	void FinishClosing();
+	void ReleaseGame();
+	void SyncPauseMenu();
+	void CheckForCyberCafe();
 	bool EnsureHelper();
 	void UpdateMouse();
 	void ForwardKey(ef::EventType type, WPARAM wParam, LPARAM lParam);
 	void LogStats();
+	float Blackness() const;
 
 	BrowserClient client_;
 	OverlayRenderer renderer_;
@@ -34,8 +44,10 @@ private:
 	HWND window_ = nullptr;
 	WNDPROC originalProc_ = nullptr;
 
-	bool open_ = false;
+	Phase phase_ = Phase::Closed;
+	DWORD phaseStart_ = 0;
 	bool togglePending_ = false;
+	bool suspendedByMenu_ = false;
 	unsigned short savedControls_ = 0;
 
 	int mouseX_ = 0;

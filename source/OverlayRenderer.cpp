@@ -144,7 +144,7 @@ bool OverlayRenderer::Upload(IDirect3DDevice9* device, const uint8_t* pixels, ui
 	return true;
 }
 
-void OverlayRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float screenHeight, float cursorX, float cursorY, ef::CursorKind cursor) {
+void OverlayRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float screenHeight, float cursorX, float cursorY, ef::CursorKind cursor, float blackness) {
 	// RenderWare guarda su propia copia del estado, así que hay que dejarlo todo como estaba.
 	IDirect3DStateBlock9* saved = nullptr;
 	if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved))) return;
@@ -161,6 +161,16 @@ void OverlayRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float sc
 	}
 
 	DrawCursor(device, cursorX, cursorY, cursor);
+
+	if (blackness > 0.0f) {
+		PrepareColorDraw(device);
+		device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+		device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+		device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+		const auto alpha = static_cast<DWORD>((blackness > 1.0f ? 1.0f : blackness) * 255.0f);
+		DrawRect(device, 0, 0, screenWidth, screenHeight, D3DCOLOR_ARGB(alpha, 0, 0, 0));
+	}
 
 	saved->Apply();
 	saved->Release();

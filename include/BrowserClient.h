@@ -26,6 +26,7 @@ public:
 	uint32_t Stride() const { return header_ ? header_->stride : 0; }
 	uint32_t PaintCount() const { return header_ ? header_->paintCount.load(std::memory_order_relaxed) : 0; }
 	ef::CursorKind Cursor() const;
+	bool TakeCloseRequest();
 
 private:
 	HANDLE mapping_ = nullptr;

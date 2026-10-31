@@ -132,3 +132,7 @@ const uint8_t* BrowserClient::AcquireFrame() {
 ef::CursorKind BrowserClient::Cursor() const {
 	return header_ ? static_cast<ef::CursorKind>(header_->cursor.load(std::memory_order_relaxed)) : ef::CursorKind::Arrow;
 }
+
+bool BrowserClient::TakeCloseRequest() {
+	return header_ && header_->closeRequest.exchange(0, std::memory_order_acq_rel) != 0;
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EyeFinder</title>
+<style>
+  body { margin: 0; background: #fff; color: #000; font: 16px "Times New Roman", Times, serif; text-align: center; }
+  h1 { margin: 48px 0 4px; font-size: 56px; color: #000080; letter-spacing: 1px; }
+  h1 span { color: #cc0000; }
+  .tagline { margin: 0 0 24px; font-style: italic; }
+  form { margin-bottom: 28px; }
+  input { width: 380px; max-width: 70%; padding: 3px 5px; font: inherit; }
+  button { font: inherit; padding: 2px 12px; }
+  hr { width: 70%; }
+  table { margin: 20px auto; text-align: left; }
+  td { padding: 4px 28px; vertical-align: top; }
+  th { padding: 4px 28px; text-align: left; color: #000080; }
+  a { color: #0000ee; }
+  a:visited { color: #551a8b; }
+  footer { margin: 24px 0; font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+  <h1>Eye<span>Finder</span></h1>
+  <p class="tagline">Find it on the information superhighway.</p>
+
+  <form id="search">
+    <input id="query" autofocus spellcheck="false" autocomplete="off">
+    <button>Search</button>
+  </form>
+
+  <hr>
+
+  <table>
+    <tr><th>Reference</th><th>Computers</th><th>News</th></tr>
+    <tr>
+      <td><a href="https://www.wikipedia.org">Wikipedia</a></td>
+      <td><a href="https://github.com">GitHub</a></td>
+      <td><a href="https://www.bbc.com/news">BBC News</a></td>
+    </tr>
+    <tr>
+      <td><a href="https://web.archive.org">Internet Archive</a></td>
+      <td><a href="https://news.ycombinator.com">Hacker News</a></td>
+      <td><a href="https://apnews.com">AP News</a></td>
+    </tr>
+  </table>
+
+  <hr>
+  <footer>Copyright 1992 EyeFinder Information Services, Los Santos, SA.</footer>
+
+  <script>
+    document.getElementById('search').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const query = document.getElementById('query').value.trim();
+      if (query) location.href = 'https://duckduckgo.com/?q=' + encodeURIComponent(query);
+    });
+  </script>
+</body>
+</html>

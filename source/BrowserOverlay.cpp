@@ -7,6 +7,13 @@ namespace {
 BrowserOverlay* gOverlay = nullptr;
 
 constexpr UINT kToggleKey = VK_F8;
+constexpr DWORD kGameFadeMs = 1100;
+constexpr DWORD kBrowserFadeInMs = 400;
+constexpr DWORD kBrowserFadeOutMs = 350;
+
+// El ordenador del cibercafé.
+const CVector kCyberCafePosition = { 1170.4697f, -1655.1893f, 1014.3158f };
+constexpr float kCyberCafeRadius = 3.0f;
 
 uint32_t KeyboardModifiers() {
 	uint32_t modifiers = 0;
@@ -14,6 +21,10 @@ uint32_t KeyboardModifiers() {
 	if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= ef::kModControl;
 	if (GetKeyState(VK_MENU) & 0x8000) modifiers |= ef::kModAlt;
 	return modifiers;
+}
+
+bool PauseMenuActive() {
+	return FrontEndMenuManager.m_bMenuActive;
 }
 
 }  // namespace
@@ -35,34 +46,43 @@ void BrowserOverlay::RemoveWindowHook() {
 	gOverlay = nullptr;
 }
 
+bool BrowserOverlay::UsesCursor() const {
+	return (phase_ == Phase::Open || phase_ == Phase::FadingBrowserOut) && !PauseMenuActive();
+}
+
 LRESULT CALLBACK BrowserOverlay::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
 	BrowserOverlay& self = *gOverlay;
 
-	if (message == WM_KEYDOWN && wParam == kToggleKey) {
-		if (!(lParam & (1 << 30))) self.togglePending_ = true;
-		if (self.open_) return 0;
-	}
+	// El menú de pausa es del juego: mientras esté abierto, no tocamos nada.
+	if (!PauseMenuActive()) {
+		if (message == WM_KEYDOWN && wParam == kToggleKey) {
+			if (!(lParam & (1 << 30))) self.togglePending_ = true;
+			if (self.phase_ != Phase::Closed) return 0;
+		}
 
-	if (self.open_) {
-		switch (message) {
-		case WM_KEYDOWN:
-			self.ForwardKey(ef::EventType::KeyDown, wParam, lParam);
-			return 0;
-		case WM_SYSKEYDOWN:
-			if (wParam == VK_F4 || wParam == VK_TAB) break;  // Alt+F4 y Alt+Tab siguen funcionando.
-			self.ForwardKey(ef::EventType::KeyDown, wParam, lParam);
-			return 0;
-		case WM_KEYUP:
-		case WM_SYSKEYUP:
-			// El juego también lo recibe: si no, una tecla pulsada al abrir se quedaría atascada.
-			self.ForwardKey(ef::EventType::KeyUp, wParam, lParam);
-			break;
-		case WM_CHAR:
-		case WM_SYSCHAR:
-			self.ForwardKey(ef::EventType::Char, wParam, lParam);
-			return 0;
-		default:
-			break;
+		if (self.phase_ != Phase::Closed) {
+			switch (message) {
+			case WM_KEYDOWN:
+				// Escape abre el menú de pausa, como siempre.
+				if (wParam == VK_ESCAPE) break;
+				self.ForwardKey(ef::EventType::KeyDown, wParam, lParam);
+				return 0;
+			case WM_SYSKEYDOWN:
+				if (wParam == VK_F4 || wParam == VK_TAB) break;  // Alt+F4 y Alt+Tab siguen funcionando.
+				self.ForwardKey(ef::EventType::KeyDown, wParam, lParam);
+				return 0;
+			case WM_KEYUP:
+			case WM_SYSKEYUP:
+				// El juego también lo recibe: si no, una tecla pulsada al abrir se quedaría atascada.
+				if (wParam != VK_ESCAPE) self.ForwardKey(ef::EventType::KeyUp, wParam, lParam);
+				break;
+			case WM_CHAR:
+			case WM_SYSCHAR:
+				if (wParam != VK_ESCAPE) self.ForwardKey(ef::EventType::Char, wParam, lParam);
+				return 0;
+			default:
+				break;
+			}
 		}
 	}
 
@@ -70,6 +90,8 @@ LRESULT CALLBACK BrowserOverlay::WindowProc(HWND window, UINT message, WPARAM wP
 }
 
 void BrowserOverlay::ForwardKey(ef::EventType type, WPARAM wParam, LPARAM lParam) {
+	if (phase_ != Phase::Open) return;
+
 	ef::Event event{ type };
 	event.a = static_cast<int32_t>(wParam);
 	event.b = static_cast<int32_t>(lParam);
@@ -87,7 +109,7 @@ bool BrowserOverlay::EnsureHelper() {
 
 	std::string error;
 	const std::wstring helper = PluginDirectory() + L"\\browser\\EyeFinderBrowser.exe";
-	const std::wstring url = FileUrl(PluginDirectory() + L"\\browser\\ui\\start.html");
+	const std::wstring url = FileUrl(PluginDirectory() + L"\\browser\\ui\\shell.html");
 	if (!client_.Start(helper, url, width, height, error)) {
 		Log("Could not start the browser helper: " + error);
 		return false;
@@ -97,7 +119,8 @@ bool BrowserOverlay::EnsureHelper() {
 	return true;
 }
 
-void BrowserOverlay::Open() {
+void BrowserOverlay::BeginOpening() {
+	// Arrancamos el helper ya: el fundido le da tiempo a tener la página lista.
 	if (!EnsureHelper()) {
 		CHud::SetHelpMessage("EyeFinder: the browser could not start. See EyeFinder92SA.log.", true, false, false);
 		return;
@@ -106,12 +129,25 @@ void BrowserOverlay::Open() {
 	CPad* pad = CPad::GetPad(0);
 	savedControls_ = pad->DisablePlayerControls;
 	pad->DisablePlayerControls |= ~0x80;
+
+	TheCamera.SetFadeColour(0, 0, 0);
+	TheCamera.Fade(1.0f, 0);
+
+	phase_ = Phase::FadingGameOut;
+	phaseStart_ = GetTickCount();
+}
+
+void BrowserOverlay::FinishOpening() {
 	CTheScripts::bDisplayHud = 0;
 	CHud::bScriptDontDisplayRadar = 1;
 
+	// El juego vuelve a verse detrás del navegador, listo para cuando se cierre.
+	TheCamera.Fade(0.5f, 1);
+
 	haveMouse_ = false;
 	buttons_ = 0;
-	open_ = true;
+	phase_ = Phase::Open;
+	phaseStart_ = GetTickCount();
 	client_.Send({ ef::EventType::Show });
 
 	statsStart_ = GetTickCount();
@@ -120,32 +156,119 @@ void BrowserOverlay::Open() {
 	statsUploadMs_ = statsUploadMaxMs_ = 0.0;
 }
 
-void BrowserOverlay::Close() {
-	open_ = false;
-	client_.Send({ ef::EventType::Hide });
+void BrowserOverlay::BeginClosing() {
+	phase_ = Phase::FadingBrowserOut;
+	phaseStart_ = GetTickCount();
+}
 
-	CPad* pad = CPad::GetPad(0);
-	pad->DisablePlayerControls = savedControls_;
+void BrowserOverlay::FinishClosing() {
+	client_.Send({ ef::EventType::Hide });
+	ReleaseGame();
+
+	TheCamera.SetFadeColour(0, 0, 0);
+	TheCamera.Fade(0.0f, 0);
+	TheCamera.ProcessFade();
+	TheCamera.Fade(0.6f, 1);
+}
+
+void BrowserOverlay::ReleaseGame() {
+	phase_ = Phase::Closed;
+	suspendedByMenu_ = false;
+
+	CPad::GetPad(0)->DisablePlayerControls = savedControls_;
 	CTheScripts::bDisplayHud = 1;
 	CHud::bScriptDontDisplayRadar = 0;
 }
 
-void BrowserOverlay::Update() {
-	if (togglePending_) {
-		togglePending_ = false;
-		if (open_) Close();
-		else if (!FrontEndMenuManager.m_bMenuActive) Open();
+float BrowserOverlay::Blackness() const {
+	const float elapsed = static_cast<float>(GetTickCount() - phaseStart_);
+	if (phase_ == Phase::Open) return std::clamp(1.0f - elapsed / kBrowserFadeInMs, 0.0f, 1.0f);
+	if (phase_ == Phase::FadingBrowserOut) return std::clamp(elapsed / kBrowserFadeOutMs, 0.0f, 1.0f);
+	return 0.0f;
+}
+
+// El menú de pausa cubre el navegador: las páginas callan y, al volver, todo sigue donde estaba.
+void BrowserOverlay::SyncPauseMenu() {
+	if (phase_ != Phase::Open && phase_ != Phase::FadingBrowserOut) return;
+
+	const bool menu = PauseMenuActive();
+	if (menu == suspendedByMenu_) return;
+	suspendedByMenu_ = menu;
+
+	if (menu) {
+		client_.Send({ ef::EventType::Hide });
+		return;
 	}
 
-	if (!open_) return;
+	// En el menú se puede haber cambiado la resolución.
+	if (!EnsureHelper()) {
+		ReleaseGame();
+		CHud::SetHelpMessage("EyeFinder: the browser could not start. See EyeFinder92SA.log.", true, false, false);
+		return;
+	}
 
-	// Si el helper muere, el juego sigue: cerramos y avisamos.
+	haveMouse_ = false;
+	buttons_ = 0;
+	client_.Send({ ef::EventType::Show });
+}
+
+void BrowserOverlay::CheckForCyberCafe() {
+	CPed* player = FindPlayerPed(-1);
+	if (!player) return;
+
+	const CVector position = player->GetPosition();
+	const float dx = position.x - kCyberCafePosition.x;
+	const float dy = position.y - kCyberCafePosition.y;
+	const float dz = position.z - kCyberCafePosition.z;
+	if (dx * dx + dy * dy + dz * dz >= kCyberCafeRadius * kCyberCafeRadius) return;
+
+	if (!CHud::HelpMessageDisplayed()) CHud::SetHelpMessage("Press ~h~TAB~s~ To Open Browser", true, false, false);
+
+	CPad* pad = CPad::GetPad(0);
+	if (pad->NewKeyState.tab && !pad->OldKeyState.tab) togglePending_ = true;
+}
+
+void BrowserOverlay::Update() {
+	SyncPauseMenu();
+	if (PauseMenuActive()) {
+		togglePending_ = false;
+		return;
+	}
+
+	if (phase_ == Phase::Closed) CheckForCyberCafe();
+
+	const bool toggle = togglePending_;
+	togglePending_ = false;
+
+	switch (phase_) {
+	case Phase::Closed:
+		if (toggle) BeginOpening();
+		return;
+
+	case Phase::FadingGameOut:
+		if (GetTickCount() - phaseStart_ >= kGameFadeMs) FinishOpening();
+		return;
+
+	case Phase::FadingBrowserOut:
+		if (GetTickCount() - phaseStart_ >= kBrowserFadeOutMs) FinishClosing();
+		return;
+
+	case Phase::Open:
+		break;
+	}
+
+	// Si el helper muere, el juego sigue: volvemos a él y avisamos.
 	if (client_.HasExited()) {
 		Log("The browser helper exited unexpectedly");
-		Close();
 		client_.Stop();
 		renderer_.Release();
+		ReleaseGame();
 		CHud::SetHelpMessage("EyeFinder: the browser stopped. See EyeFinder92SA.log.", true, false, false);
+		return;
+	}
+
+	if (toggle || client_.TakeCloseRequest()) {
+		BeginClosing();
 		return;
 	}
 
@@ -197,7 +320,8 @@ void BrowserOverlay::UpdateMouse() {
 }
 
 void BrowserOverlay::Draw() {
-	if (!open_) return;
+	if (phase_ != Phase::Open && phase_ != Phase::FadingBrowserOut) return;
+	if (PauseMenuActive()) return;
 
 	auto* device = reinterpret_cast<IDirect3DDevice9*>(RwD3D9GetCurrentD3DDevice());
 	if (!device) return;
@@ -212,7 +336,7 @@ void BrowserOverlay::Draw() {
 
 	++statsDraws_;
 	renderer_.Draw(device, static_cast<float>(RsGlobal.maximumWidth), static_cast<float>(RsGlobal.maximumHeight),
-		static_cast<float>(mouseX_), static_cast<float>(mouseY_), client_.Cursor());
+		static_cast<float>(mouseX_), static_cast<float>(mouseY_), client_.Cursor(), Blackness());
 }
 
 void BrowserOverlay::LogStats() {
@@ -234,7 +358,9 @@ void BrowserOverlay::LogStats() {
 }
 
 void BrowserOverlay::Restart() {
-	if (open_) Close();
+	if (phase_ == Phase::Closed) return;
+	client_.Send({ ef::EventType::Hide });
+	ReleaseGame();
 }
 
 void BrowserOverlay::OnDeviceLost() {

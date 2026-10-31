@@ -21,11 +21,11 @@ Test without the game, using the harness (there's no other test or lint setup):
 
 ```powershell
 $root = (Get-Location).Path
-$url = "file:///$root/helper/build/Release/ui/start.html" -replace '\\','/'
-tools\harness\build\Release\EyeFinderHarness.exe "$root\helper\build\Release\EyeFinderBrowser.exe" $url 1280 720 <output folder>
+$url = "file:///$root/helper/build/Release/ui/shell.html" -replace '\\','/'
+tools\harness\build\Release\EyeFinderHarness.exe "$root\helper\build\Release\EyeFinderBrowser.exe" $url <output folder>
 ```
 
-Append `?animate` to the URL to measure a page that repaints constantly. The harness's click coordinates match `ui/start.html`'s layout at 1280x720, so update them if that layout changes. It writes raw BGRX captures, and a passing run doesn't prove the page looks right, so inspect them.
+The harness drives the desktop, tabs, toolbar, dropdowns and Log Off, measures performance and writes raw BGRX captures at 1280x720. Its click coordinates and expected pixel colors match `ui/shell.html` and `sites/www.eyefinder.info/tests.html`, so update them if those layouts change. A passing run doesn't prove everything looks right, so inspect the captures. It can't test anything game-side, such as the pause menu or fades.
 
 ## Architecture
 
@@ -36,19 +36,28 @@ There are two processes, built separately:
 
 They communicate only through `shared/ipc.h`, a shared memory section holding a lock-free triple frame buffer and an input event ring. The layout must stay identical in 32 and 64 bits, so use only fixed-size types there. Bump `kProtocol` when it changes. Neither side ever blocks the other: the ring drops events when full, and the game keeps its last frame if the helper stalls.
 
+The helper runs several windowless Chromium views: one full-screen view for the interface (`ui/shell.html`: the desktop and browser window) and one per tab. The shell reports the rectangle reserved for page content, and the helper composites the active tab into it, so the plugin only ever sees one frame. Tabs have their own views so that real sites work, because many refuse to load in an iframe. Mouse input goes to whichever view is under the cursor, and keyboard input to the last one clicked.
+
+The shell gives orders through `window.cefQuery`, handled in `ShellQueryHandler`, and the helper calls back through `window.ef`. Only the shell may use this channel: `cefQuery` is injected only into `file:` pages, the handler checks the browser and URL, the shell can't navigate away, and tabs can't open `file:` URLs. Keep all of that when adding commands.
+
+`sites/<domain>/` is served as that domain over `http` and `https` by `SiteHandlerFactory`, so adding a site means adding a folder. Sites are registered at helper startup.
+
 Plugin code is split so that the harness can exercise it without the game:
 
 - **Game-free, also compiled into the harness:** `BrowserClient` (process, job object, shared memory) and `OverlayRenderer` (Direct3D 9 upload and drawing).
-- **Game-specific:** `BrowserOverlay` (open and close, input, player controls, stats) and `Main.cpp` (plugin-sdk events, the cursor hook).
+- **Game-specific:** `BrowserOverlay` (open and close, input, pause menu, player controls, stats) and `Main.cpp` (plugin-sdk events, the cursor hook).
 
 Non-obvious behavior:
 
 - **Input:** the mouse is polled with `GetCursorPos` and `GetAsyncKeyState`, and the wheel comes from `CPad`, because the game reads the mouse through DirectInput. Keyboard input comes from a window procedure subclass. `WM_KEYUP` also reaches the game so that keys don't stick.
 - **Cursor recentering:** the hook at `0x007453F0` stops the game moving the cursor while the browser is open.
+- **Pause menu:** the game opens it when `CPad::NewKeyState.esc` goes down, so Escape must reach the game. While `m_bMenuActive` is set, the plugin passes all input through, stops drawing and mutes pages. On return it restarts the helper if the resolution changed.
+- **Opening and closing:** F8, or TAB at the cyber cafe position. The game fades to black, the browser appears, and the browser itself is darkened for its own fade because it's drawn after the game's fade.
+- **Focus:** navigating can replace Chromium's internal widget, which then has no focus and silently refuses to open dropdowns, so the helper reasserts focus on every click.
 - **Render state:** `OverlayRenderer::Draw` wraps everything in a state block, because RenderWare caches device state and must not see it change.
 - **Dropdowns:** Chromium paints them as a separate `PET_POPUP` element, and the helper composites it onto the frame.
 - **Device loss:** the texture is in `D3DPOOL_DEFAULT`, so `OnDeviceLost` releases it and `OnDeviceReset` requests a new frame.
-- **Resolution changes:** the helper restarts on the next open if the game's size changed, which reloads the page.
+- **Resolution changes:** the helper restarts if the game's size changed, which loses the open tabs.
 - **DXVK:** the developer's game runs through DXVK, so test Direct3D changes through it as well as native Direct3D.
 
 ## Before this ships with real internet access

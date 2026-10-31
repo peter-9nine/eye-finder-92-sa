@@ -8,7 +8,7 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 1;
+constexpr uint32_t kProtocol = 2;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
@@ -62,6 +62,7 @@ struct Header {
 	std::atomic<uint32_t> state;
 	std::atomic<uint32_t> cursor;
 	std::atomic<uint32_t> paintCount;
+	std::atomic<uint32_t> closeRequest;  // La interfaz pide volver al juego (Log Off).
 
 	// Cola de eventos con un solo productor (plugin) y un solo consumidor (helper).
 	std::atomic<uint32_t> ringWrite;
@@ -70,7 +71,7 @@ struct Header {
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);
 static_assert(sizeof(Header) <= kHeaderSize);
-static_assert(offsetof(Header, ring) == 44);
+static_assert(offsetof(Header, ring) == 48);
 
 inline size_t SectionSize(uint32_t stride, uint32_t height) {
 	return size_t(kHeaderSize) + size_t(stride) * height * kSlots;

@@ -10,6 +10,7 @@
 
 #include <../safetyhook/safetyhook.hpp>
 
+#include <CCamera.h>
 #include <CHud.h>
 #include <CMenuManager.h>
 #include <CTheScripts.h>

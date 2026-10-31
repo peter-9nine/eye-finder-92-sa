@@ -11,7 +11,7 @@ safetyhook::InlineHook gMouseSetPos;
 
 // El juego recentra el cursor en cada fotograma; con el navegador abierto hay que impedirlo.
 void __cdecl HookMouseSetPos(RwV2d* position) {
-	if (gOverlay.IsOpen()) return;
+	if (gOverlay.UsesCursor()) return;
 	gMouseSetPos.original<int(__cdecl*)(RwV2d*)>()(position);
 }
 

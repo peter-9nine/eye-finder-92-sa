@@ -18,11 +18,26 @@ std::wstring PluginDirectory() {
 }
 
 std::wstring FileUrl(const std::wstring& path) {
+	// UTF-8 con escapes: la misma forma en que Chromium devuelve la URL, para poder compararla.
+	const int size = WideCharToMultiByte(CP_UTF8, 0, path.c_str(), -1, nullptr, 0, nullptr, nullptr);
+	std::string utf8(size > 0 ? size - 1 : 0, '\0');
+	if (size > 1) WideCharToMultiByte(CP_UTF8, 0, path.c_str(), -1, utf8.data(), size, nullptr, nullptr);
+
 	std::wstring url = L"file:///";
-	for (const wchar_t c : path) {
-		if (c == L'\\') url += L'/';
-		else if (c == L' ') url += L"%20";
-		else url += c;
+	wchar_t escaped[4];
+	for (const char c : utf8) {
+		const auto byte = static_cast<unsigned char>(c);
+		if (byte == '\\') {
+			url += L'/';
+		}
+		else if ((byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || (byte >= '0' && byte <= '9') ||
+			byte == '-' || byte == '_' || byte == '.' || byte == '~' || byte == '/' || byte == ':') {
+			url += static_cast<wchar_t>(byte);
+		}
+		else {
+			swprintf_s(escaped, L"%%%02X", byte);
+			url += escaped;
+		}
 	}
 	return url;
 }

@@ -2,20 +2,36 @@
 
 A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https://github.com/DK22Pac/plugin-sdk) and [CEF](https://github.com/chromiumembedded/cef).
 
-**Status: prototype.** It shows real websites over the game with working mouse, keyboard and scrolling. In-universe sites, the desktop and the game features come later.
+**Status: prototype.** It has a 1992-style desktop and a web browser with tabs that reaches both the real internet and sites stored with the mod. Game features for sites come later.
 
 > **Don't use this prototype for browsing you care about.** Chromium's sandbox is off, and the browser has real internet access. Avoid untrusted sites and don't log in to your accounts.
 
 ## Using it
 
 1. Run `tools\deploy.ps1` with the game closed, or copy a release into `modloader\EyeFinder92SA`.
-2. Load a game and press **F8** to open or close the browser.
+2. Load a game and press **F8**, or **TAB** at the cyber cafe computer.
 
 | Key | Action |
 |---|---|
-| F8 | Open or close the browser |
+| F8 | Open or close the computer |
+| Esc | Open the game's pause menu |
+| Ctrl+T, Ctrl+W | New tab, close tab |
+| Ctrl+Tab, Ctrl+Shift+Tab | Next tab, previous tab |
+| Ctrl+L | Go to the address bar |
 | F5 | Reload |
 | Alt+Left, Alt+Right | Back, forward |
+
+## Adding a site
+
+Create a folder named after the address in `sites\`, with normal web files in it:
+
+```
+sites\www.mysite.com\
+  index.html
+  style.css
+```
+
+You can preview it in any web browser. Restart the game to pick up a new folder.
 
 `modloader\EyeFinder92SA\EyeFinder92SA.log` records startup problems and, while the browser is open, performance every 5 seconds.
 
@@ -45,10 +61,10 @@ tools\deploy.ps1   # copies to modloader; refuses to run while the game is open
 `EyeFinderHarness.exe` is a 32-bit program that uses the same client and renderer code as the plugin, with its own Direct3D 9 device:
 
 ```powershell
-tools\harness\build\Release\EyeFinderHarness.exe <helper.exe> <url> <width> <height> <output folder>
+tools\harness\build\Release\EyeFinderHarness.exe <helper.exe> <shell url> <output folder>
 ```
 
-It reports frame rates and upload times and saves back buffer captures as raw BGRX files. To test through DXVK, copy the harness next to DXVK's `d3d9.dll`.
+It drives the desktop and browser, reports frame rates and upload times, and saves back buffer captures as raw BGRX files. To test through DXVK, copy the harness next to DXVK's `d3d9.dll`.
 
 ## Author
 
