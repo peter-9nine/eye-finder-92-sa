@@ -48,7 +48,7 @@
     <IgnoreImportLibrary>true</IgnoreImportLibrary>
     <OutDir>$(ProjectDir)bin\GTASA\Release\</OutDir>
     <IntDir>$(ProjectDir)obj\GTASA\Release\</IntDir>
-    <TargetName>EyeFinder92SA_SA</TargetName>
+    <TargetName>EyeFinder92SA</TargetName>
     <TargetExt>.asi</TargetExt>
     <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(IncludePath)</IncludePath>
     <LibraryPath>$(PLUGIN_SDK_DIR)\shared\dxsdk;$(LibraryPath)</LibraryPath>
@@ -58,7 +58,7 @@
     <IgnoreImportLibrary>true</IgnoreImportLibrary>
     <OutDir>$(ProjectDir)bin\GTASA\Debug\</OutDir>
     <IntDir>$(ProjectDir)obj\GTASA\Debug\</IntDir>
-    <TargetName>EyeFinder92SA_SA</TargetName>
+    <TargetName>EyeFinder92SA</TargetName>
     <TargetExt>.asi</TargetExt>
     <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(IncludePath)</IncludePath>
     <LibraryPath>$(PLUGIN_SDK_DIR)\shared\dxsdk;$(LibraryPath)</LibraryPath>
@@ -68,7 +68,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>_CRT_NON_CONFORMING_SWPRINTFS;GTASA;GTAGAME_NAME="San Andreas";GTAGAME_ABBR="SA";GTAGAME_ABBRLOW="sa";GTAGAME_PROTAGONISTNAME="CJ";GTAGAME_CITYNAME="San Andreas";PLUGIN_SGV_10US;RW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(MYPLUGIN_SHARED)\imgui;$(MYPLUGIN_SHARED)\imgui\backends;$(MYPLUGIN_SHARED)\nlohmann;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -87,25 +87,17 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
-      <AdditionalDependencies>plugin.lib;d3dx9.lib;CLEO.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>plugin.lib;d3dx9.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)\lib;$(PLUGIN_SDK_DIR)\output\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ProgramDatabaseFile>$(OutDir)$(TargetName).pdb</ProgramDatabaseFile>
     </Link>
-    <PostBuildEvent>
-      <Command>if defined GTA_SA_DIR (
-taskkill /IM gta_sa.exe /F /FI "STATUS eq RUNNING"
-if not exist "$(GTA_SA_DIR)\modloader\$(TargetName)\" mkdir "$(GTA_SA_DIR)\modloader\$(TargetName)"
-xcopy /Y "$(TargetPath)" "$(GTA_SA_DIR)\modloader\$(TargetName)\"
-if defined SIGN_PATH "$(SIGN_PATH)" sign /f "$(SIGN_CERT)" /p "$(SIGN_PASSWORD)" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "$(GTA_SA_DIR)\modloader\$(TargetName)\$(TargetFileName)"
-)</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug GTASA|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>_CRT_NON_CONFORMING_SWPRINTFS;GTASA;GTAGAME_NAME="San Andreas";GTAGAME_ABBR="SA";GTAGAME_ABBRLOW="sa";GTAGAME_PROTAGONISTNAME="CJ";GTAGAME_CITYNAME="San Andreas";PLUGIN_SGV_10US;RW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(MYPLUGIN_SHARED)\imgui;$(MYPLUGIN_SHARED)\imgui\backends;$(MYPLUGIN_SHARED)\nlohmann;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -118,16 +110,9 @@ if defined SIGN_PATH "$(SIGN_PATH)" sign /f "$(SIGN_CERT)" /p "$(SIGN_PASSWORD)"
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>plugin_d.lib;d3dx9.lib;CLEO.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>plugin_d.lib;d3dx9.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)\lib;$(PLUGIN_SDK_DIR)\output\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
-    <PostBuildEvent>
-      <Command>if defined GTA_SA_DIR (
-taskkill /IM gta_sa.exe /F /FI "STATUS eq RUNNING"
-if not exist "$(GTA_SA_DIR)\modloader\$(TargetName)\" mkdir "$(GTA_SA_DIR)\modloader\$(TargetName)"
-xcopy /Y "$(TargetPath)" "$(GTA_SA_DIR)\modloader\$(TargetName)\"
-)</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <!-- Defaults for any .hlsl added under shaders\: SM 3.0 pixel shader compiled to
        $(IntDir)generated\<file>_ps_bytecode.h with variable g_<file>_ps_bytecode -->
@@ -143,16 +128,18 @@ xcopy /Y "$(TargetPath)" "$(GTA_SA_DIR)\modloader\$(TargetName)\"
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="source\Main.cpp" />
-    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui.cpp" />
-    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_demo.cpp" />
-    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_draw.cpp" />
-    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_tables.cpp" />
-    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_widgets.cpp" />
-    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\backends\imgui_impl_dx9.cpp" />
-    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="source\BrowserClient.cpp" />
+    <ClCompile Include="source\BrowserOverlay.cpp" />
+    <ClCompile Include="source\OverlayRenderer.cpp" />
+    <ClCompile Include="source\Paths.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\pch.h" />
+    <ClInclude Include="include\BrowserClient.h" />
+    <ClInclude Include="include\BrowserOverlay.h" />
+    <ClInclude Include="include\OverlayRenderer.h" />
+    <ClInclude Include="include\Paths.h" />
+    <ClInclude Include="shared\ipc.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>

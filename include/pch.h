@@ -3,8 +3,14 @@
 
 #include <windows.h>
 #include <d3d9.h>
-#include <d3dx9.h>
 
-#include <imgui.h>
-#include <imgui_impl_dx9.h>
-#include <imgui_impl_win32.h>
+#include <algorithm>
+#include <cstdio>
+#include <string>
+
+#include <../safetyhook/safetyhook.hpp>
+
+#include <CHud.h>
+#include <CMenuManager.h>
+#include <CTheScripts.h>
+#include <RenderWare.h>

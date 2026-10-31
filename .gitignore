@@ -21,6 +21,13 @@ obj/
 *.tlog
 *.log
 
+# CEF is downloaded by tools\fetch-cef.ps1
+third_party/
+
+# CMake build folders
+helper/build/
+tools/harness/build/
+
 # Editor temp files
 *.TMP
 *~RF*.TMP

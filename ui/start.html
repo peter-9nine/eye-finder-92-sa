@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EyeFinder prototype</title>
+<style>
+  body { margin: 0; font: 18px Tahoma, sans-serif; background: #e8eef5; color: #123; }
+  header { background: #0b4c8c; color: #fff; padding: 16px 24px; display: flex; gap: 16px; align-items: center; }
+  header h1 { margin: 0; font-size: 24px; }
+  #address { flex: 1; font: inherit; padding: 6px 10px; }
+  button, select { font: inherit; padding: 6px 12px; }
+  main { padding: 24px; }
+  section { background: #fff; padding: 16px 20px; margin-bottom: 16px; border: 1px solid #b8c6d6; }
+  section h2 { margin-top: 0; font-size: 20px; }
+  #ticker { font-family: Consolas, monospace; }
+  #bar { height: 12px; width: 60px; background: #0b4c8c; position: relative; }
+  .filler { height: 140px; background: linear-gradient(90deg, #d7e4f2, #f7fafd); margin-bottom: 10px; padding: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>EyeFinder</h1>
+  <input id="address" value="https://example.com" spellcheck="false">
+  <button id="go">Go</button>
+</header>
+<main>
+  <section>
+    <h2>Real websites</h2>
+    <p><a href="https://example.com">example.com</a> ·
+       <a href="https://www.wikipedia.org">wikipedia.org</a> ·
+       <a href="https://www.google.com">google.com</a> ·
+       <a href="https://github.com" target="_blank">github.com (opens as a new tab)</a></p>
+    <p>F8 closes. F5 reloads. Alt+Left and Alt+Right go back and forward.</p>
+  </section>
+  <section>
+    <h2>Input test</h2>
+    <p><button id="clicker">Click me</button> <span id="clicks">0 clicks</span></p>
+    <p><input id="text" placeholder="Type here" style="font:inherit;padding:6px;width:320px"> <span id="echo"></span></p>
+    <p><select id="dropdown"><option>Los Santos</option><option>San Fierro</option><option>Las Venturas</option></select>
+       <span id="picked">Los Santos</span></p>
+  </section>
+  <section>
+    <h2>Animation test</h2>
+    <p id="ticker">starting</p>
+    <div id="bar"></div>
+  </section>
+  <section id="fillers"><h2>Scrolling test</h2></section>
+</main>
+<script>
+  const byId = (id) => document.getElementById(id);
+
+  function go() {
+    let url = byId('address').value.trim();
+    if (!/^[a-z]+:/i.test(url)) url = 'https://' + url;
+    location.href = url;
+  }
+  byId('go').onclick = go;
+  byId('address').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+
+  let clicks = 0;
+  byId('clicker').onclick = () => { byId('clicks').textContent = ++clicks + ' clicks'; };
+  byId('text').oninput = (e) => { byId('echo').textContent = 'Typed: ' + e.target.value; };
+  byId('dropdown').onchange = (e) => { byId('picked').textContent = e.target.value; };
+
+  for (let i = 1; i <= 30; i++) {
+    const row = document.createElement('div');
+    row.className = 'filler';
+    row.textContent = 'Row ' + i;
+    byId('fillers').appendChild(row);
+  }
+
+  // Solo se anima con ?animate o al pulsar A, para medir el peor caso a voluntad.
+  let animating = location.search.includes('animate');
+  let frames = 0;
+  let windowStart = performance.now();
+  function tick(now) {
+    frames++;
+    if (now - windowStart >= 1000) {
+      byId('ticker').textContent = Math.round(frames * 1000 / (now - windowStart)) + ' animation frames per second';
+      frames = 0;
+      windowStart = now;
+    }
+    byId('bar').style.left = (Math.sin(now / 500) * 200 + 200) + 'px';
+    if (animating) requestAnimationFrame(tick);
+  }
+  if (animating) requestAnimationFrame(tick);
+  else byId('ticker').textContent = 'Animation off. Open start.html?animate to measure it.';
+</script>
+</body>
+</html>
