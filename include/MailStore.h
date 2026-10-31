@@ -39,6 +39,10 @@ public:
 	bool KnowsReplyKey(const std::string& key) const { return replies_.count(key) != 0; }
 	const std::map<std::string, int>& Replies() const { return replies_; }
 	bool MarkRead(uint32_t id);
+
+	// Valores compartidos con mods y páginas: se guardan con la partida, como el correo.
+	void SetValue(const std::string& key, const std::string& value);
+	const std::map<std::string, std::string>& Values() const { return values_; }
 	bool Remove(uint32_t id);
 
 	int UnreadCount() const;
@@ -57,6 +61,7 @@ private:
 	std::vector<Mail> mails_;
 	// Sobrevive a borrar el correo: el mod que lo envió sigue pudiendo preguntar.
 	std::map<std::string, int> replies_;
+	std::map<std::string, std::string> values_;
 	uint32_t nextId_ = 1;
 	bool dirty_ = true;
 };

@@ -45,12 +45,14 @@ constexpr POINT kConnect = { 545, 437 };
 constexpr POINT kStayLocal = { 735, 437 };
 
 // mail.eyefinder.info
-constexpr POINT kFirstMailRow = { 500, 187 };
-constexpr POINT kReplyGood = { 410, 655 };
+constexpr POINT kFirstMailRow = { 300, 190 };
+constexpr POINT kZoomIn = { 1096, 703 };
+constexpr POINT kZoomOut = { 1020, 703 };
+constexpr POINT kReplyGood = { 700, 655 };
 
 // tests.html: el botón de CLEO
 constexpr POINT kRunCleo = { 290, 372 };
-constexpr POINT kDeleteMail = { 1058, 391 };
+constexpr POINT kDeleteMail = { 1072, 175 };
 
 // tests.html, a partir de la esquina del hueco de contenido
 constexpr POINT kClickMe = { 258, 204 };
@@ -238,6 +240,9 @@ void SyncMail() {
 		else gStore.Answer(operation.id, operation.kind == ef::MailOpKind::ReplyGood ? 1 : 2, key, script);
 	}
 	if (changed) gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
+
+	std::string valueKey, valueText;
+	while (gClient.TakeValueOp(valueKey, valueText)) gStore.SetValue(valueKey, valueText);
 	gStore.FlushSession();
 }
 
@@ -277,6 +282,13 @@ void TestApi() {
 	Expect("API: run script", eyefinder::RunCleoScript("x.cs") == 1);
 	Expect("API: empty script refused", eyefinder::RunCleoScript(nullptr) == 0);
 	Expect("API: queue count", pending() == 6);
+	Expect("API: set value", eyefinder::SetValue("mod.text", "hello") == 1 && eyefinder::SetValueInt("mod.number", -42) == 1);
+	char buffer[16];
+	Expect("API: get value", eyefinder::GetValue("mod.text", buffer, sizeof(buffer)) == 1 && strcmp(buffer, "hello") == 0);
+	Expect("API: get int", eyefinder::GetValueInt("mod.number", 7) == -42);
+	Expect("API: missing value", eyefinder::GetValue("mod.none", buffer, sizeof(buffer)) == 0 && eyefinder::GetValueInt("mod.none", 7) == 7);
+	Expect("API: text isn't a number", eyefinder::GetValueInt("mod.text", 7) == 7);
+	Expect("API: bad key refused", eyefinder::SetValue("bad key!", "x") == 0 && eyefinder::SetValue(nullptr, "x") == 0);
 	Expect("API: unread count", eyefinder::GetUnreadCount() == 0);
 
 	// Una cola llena rechaza, en lugar de crecer sin fin.
@@ -312,7 +324,10 @@ void TestMailFiles() {
 	Expect("files: answer", replying.Answer(1, 2, replyKey, replyScript) && replyKey == "key1" && replyScript == "b.cs");
 	Expect("files: save replies", replying.SaveTo(folder / L"GTASAsf4.json"));
 	MailStore replied;
+	replying.SetValue("mod.level", "5");
+	Expect("files: save values", replying.SaveTo(folder / L"GTASAsf4.json"));
 	Expect("files: load replies", replied.LoadFrom(folder / L"GTASAsf4.json") && replied.Mails()[0].answer == 2 && replied.Mails()[0].badText == "Bad" && replied.Replies().at("key1") == 2);
+	Expect("files: values kept", replied.Values().at("mod.level") == "5");
 
 	MailStore second;
 	Expect("files: load second slot", second.LoadFrom(folder / L"GTASAsf2.json") && second.Mails().size() == 1 && second.Mails()[0].from == "Other");
@@ -408,6 +423,18 @@ int wmain(int argc, wchar_t** argv) {
 	}
 	gClient.Send({ ef::EventType::Show });
 	gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
+
+	{
+		ef::GameStateData state{};
+		state.inGame = 1;
+		state.money = 12345;
+		state.health = 87.5f;
+		state.wantedLevel = 3;
+		state.day = 42;
+		strcpy_s(state.zone, "Ganton");
+		strcpy_s(state.lastMission, "SWEET_1");
+		gClient.PublishGameState(state);
+	}
 
 	while (!gRenderer.HasFrame()) {
 		if (gClient.HasExited()) {
@@ -637,6 +664,35 @@ int wmain(int argc, wchar_t** argv) {
 		std::filesystem::remove(page, removeError);
 		GoTo("www.eyefinder.info/tests.html", 800);
 		Shot("17g_media_formats");
+	}
+
+	// Valores y estado del juego, en los dos sentidos.
+	gStore.SetValue("tests.pong", "hello from the game");
+	RunWithMail(1800);
+	Expect("values: the page's value reached the game", gStore.Values().count("tests.ping") && gStore.Values().at("tests.ping") == "hello from the page");
+	Shot("17h_state_and_values");
+
+	// Zoom: los botones y el teclado.
+	{
+		const std::vector<uint32_t> before = gLastShot;
+		Click(kZoomIn);
+		Click(kZoomIn);
+		Run(500);
+		Shot("17i_zoomed_in");
+		Expect("zoom: the buttons change the page", gLastShot != before);
+		gClient.Send({ ef::EventType::KeyDown, 0, 0, '0', 0, ef::kModControl });
+		gClient.Send({ ef::EventType::KeyUp, 0, 0, '0', 0, ef::kModControl });
+		Run(500);
+		gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_OEM_MINUS, 0, ef::kModControl });
+		gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_OEM_MINUS, 0, ef::kModControl });
+		gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_OEM_MINUS, 0, ef::kModControl });
+		gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_OEM_MINUS, 0, ef::kModControl });
+		Run(500);
+		Shot("17j_zoomed_out");
+		gClient.Send({ ef::EventType::Wheel, gWidth / 2, gHeight / 2, 0, 120, ef::kModControl });
+		gClient.Send({ ef::EventType::Wheel, gWidth / 2, gHeight / 2, 0, 120, ef::kModControl });
+		Run(500);
+		Shot("17k_ctrl_wheel_back_to_100");
 	}
 
 	// El busca, sobre la página. Tiene que acabar solo.

@@ -8,13 +8,16 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 4;
+constexpr uint32_t kProtocol = 5;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
 constexpr uint32_t kMailOpRingSize = 64;
 constexpr uint32_t kSiteScriptRingSize = 8;
 constexpr uint32_t kSiteScriptNameSize = 200;
+constexpr uint32_t kValueOpRingSize = 16;
+constexpr uint32_t kValueKeySize = 64;
+constexpr uint32_t kValueTextSize = 1024;
 constexpr uint32_t kHeaderSize = 64 * 1024;
 
 // Mismos valores que EVENTFLAG_* de CEF.
@@ -59,6 +62,33 @@ struct MailOp {
 };
 static_assert(sizeof(MailOp) == 8);
 
+// Un valor que una página quiere guardar. Las claves y los textos son de los mods y las páginas.
+struct ValueOp {
+	char key[kValueKeySize];
+	char value[kValueTextSize];
+};
+
+// Lo que las páginas pueden saber del juego. El plugin lo publica varias veces por segundo.
+struct GameStateData {
+	int32_t inGame;
+	int32_t money;
+	float health;
+	float armor;
+	int32_t wantedLevel;
+	int32_t day;
+	int32_t hour;
+	int32_t minute;
+	float x;
+	float y;
+	float z;
+	int32_t interior;
+	int32_t inVehicle;
+	int32_t onMission;
+	int32_t weather;
+	char zone[64];
+	char lastMission[16];
+};
+
 enum class HelperState : uint32_t { Starting, Ready, Failed };
 enum class CursorKind : uint32_t { Arrow, Hand, IBeam };
 
@@ -91,6 +121,14 @@ struct Header {
 	std::atomic<uint32_t> siteScriptWrite;
 	std::atomic<uint32_t> siteScriptRead;
 	char siteScripts[kSiteScriptRingSize][kSiteScriptNameSize];
+
+	std::atomic<uint32_t> valueOpWrite;
+	std::atomic<uint32_t> valueOpRead;
+	ValueOp valueOps[kValueOpRingSize];
+
+	// Se lee con un contador: impar mientras el plugin escribe, y si cambia, se vuelve a leer.
+	std::atomic<uint32_t> gameStateSequence;
+	GameStateData gameState;
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);
 static_assert(sizeof(Header) <= kHeaderSize);

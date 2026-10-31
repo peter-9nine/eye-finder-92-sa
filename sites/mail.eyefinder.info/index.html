@@ -4,32 +4,50 @@
 <meta charset="utf-8">
 <title>EyeMail</title>
 <style>
+  * { box-sizing: border-box; }
   html, body { height: 100%; }
   body { margin: 0; display: flex; flex-direction: column; background: #c0c0c0; color: #000; font: 15px Tahoma, sans-serif; }
-  header { flex: none; display: flex; align-items: baseline; gap: 14px; padding: 8px 12px; background: #000080; color: #fff; }
+
+  header { flex: none; display: flex; align-items: center; gap: 14px; padding: 6px 12px; background: #000080; color: #fff; }
   header h1 { margin: 0; font: bold 22px "Times New Roman", serif; }
-  #list { flex: 1 1 40%; min-height: 100px; overflow-y: auto; margin: 6px 6px 0; background: #fff; border: 2px inset #fff; }
-  table { width: 100%; border-collapse: collapse; }
-  th { position: sticky; top: 0; padding: 3px 8px; background: #c0c0c0; border: 1px outset #fff; text-align: left; font-weight: normal; }
-  td { padding: 3px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
-  .from { width: 28%; }
-  .received { width: 19%; }
-  tr.mail { cursor: pointer; }
-  tr.unread td { font-weight: bold; }
-  tr.selected td { background: #000080; color: #fff; }
-  #empty { padding: 24px; text-align: center; color: #555; }
-  #reader { flex: 1 1 60%; min-height: 100px; display: flex; flex-direction: column; margin: 6px; background: #fff; border: 2px inset #fff; }
-  #details { flex: none; padding: 8px 10px; background: #e8e8e8; border-bottom: 1px solid #808080; }
-  #details b { display: inline-block; width: 66px; font-weight: normal; color: #444; }
-  #subjectRow { font-weight: bold; }
-  #actions { float: right; }
-  button { font: inherit; padding: 2px 12px; }
-  #body { flex: 1; overflow-y: auto; margin: 0; padding: 12px; font: 16px "Courier New", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-  #nothing { margin: auto; color: #555; }
+  #summary { flex: 1; }
+  .filter { padding: 3px 12px; background: #c0c0c0; border: 2px outset #fff; color: #000; font: inherit; cursor: pointer; }
+  .filter.active { border-style: inset; font-weight: bold; }
+
+  #panes { flex: 1; min-height: 0; display: flex; gap: 6px; padding: 6px; }
+
+  /* La lista: quién, de qué y un adelanto, para decidir sin abrir el correo. */
+  #list { flex: 0 0 37%; min-width: 0; overflow-y: auto; background: #fff; border: 2px inset #fff; }
+  .mail { position: relative; padding: 8px 10px 8px 24px; border-bottom: 1px solid #ccc; cursor: pointer; }
+  .mail:hover { background: #e4ecfa; }
+  .mail.selected { background: #000080; color: #fff; }
+  .mailTop { display: flex; align-items: baseline; gap: 8px; }
+  .sender { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 16px; }
+  .date { flex: none; font-size: 12px; color: #555; }
+  .subject, .preview { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .preview { font-size: 13px; color: #666; }
+  .mail.selected .date, .mail.selected .preview { color: #d0d8f0; }
+  .mail.unread .sender, .mail.unread .subject { font-weight: bold; }
+  .mail.unread::before { content: ""; position: absolute; left: 8px; top: 14px; width: 9px; height: 9px; border-radius: 50%; background: #0050d0; }
+  .mail.selected.unread::before { background: #fff; }
+  .needsAnswer { margin-left: 4px; padding: 0 4px; background: #d00000; color: #fff; font-size: 11px; font-weight: bold; }
+  #empty { padding: 36px 16px; text-align: center; color: #555; }
+
+  /* El correo abierto */
+  #reader { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #fff; border: 2px inset #fff; }
+  #nothing { margin: auto; padding: 16px; text-align: center; color: #555; }
+  #details { flex: none; padding: 10px 12px; background: #e8e8e8; border-bottom: 1px solid #808080; }
+  #detailsTop { display: flex; align-items: flex-start; gap: 10px; }
+  #readSubject { flex: 1; min-width: 0; margin: 0; font: bold 19px Tahoma, sans-serif; overflow-wrap: anywhere; }
+  #remove { flex: none; padding: 3px 12px; font: inherit; }
+  #readMeta { margin-top: 5px; color: #444; font-size: 13px; }
+  #body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; font: 16px "Courier New", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+
   #replies { flex: none; padding: 10px; background: #e8e8e8; border-top: 1px solid #808080; }
   #replyPrompt { margin-bottom: 6px; font-weight: bold; }
   #replyButtons { display: flex; gap: 8px; }
-  #replyButtons button { flex: 1 1 0; min-height: 34px; padding: 4px 10px; }
+  #replyButtons button { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 4px 10px; font: inherit; cursor: pointer; }
+
   .replyCard { margin: 18px 0 4px; font: 15px Tahoma, sans-serif; background: #eef2fa; border: 1px solid #808080; border-left: 5px solid #000080; }
   .replyHeader { padding: 6px 10px; background: #000080; color: #fff; font-weight: bold; }
   .replyMeta { padding: 6px 10px 0; color: #444; font-size: 13px; }
@@ -39,28 +57,33 @@
 </style>
 </head>
 <body>
-  <header><h1>EyeMail</h1><span id="summary"></span></header>
+  <header>
+    <h1>EyeMail</h1>
+    <span id="summary"></span>
+    <button class="filter active" id="showAll">All</button>
+    <button class="filter" id="showUnread">Unread</button>
+  </header>
 
-  <div id="list">
-    <table>
-      <thead><tr><th class="from">From</th><th>Subject</th><th class="received">Received</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div id="empty" hidden>Your mailbox is empty.</div>
-  </div>
-
-  <div id="reader">
-    <div id="nothing">Select a message to read it.</div>
-    <div id="details" hidden>
-      <div id="actions"><button id="remove">Delete</button></div>
-      <div><b>From:</b><span id="readFrom"></span></div>
-      <div><b>Received:</b><span id="readReceived"></span></div>
-      <div id="subjectRow"><b>Subject:</b><span id="readSubject"></span></div>
+  <div id="panes">
+    <div id="list">
+      <div id="rows"></div>
+      <div id="empty" hidden></div>
     </div>
-    <div id="body" hidden></div>
-    <div id="replies" hidden>
-      <div id="replyPrompt">Your answer:</div>
-      <div id="replyButtons"><button id="replyGood"></button><button id="replyBad"></button></div>
+
+    <div id="reader">
+      <div id="nothing">Select a message to read it.</div>
+      <div id="details" hidden>
+        <div id="detailsTop">
+          <h2 id="readSubject"></h2>
+          <button id="remove">Delete</button>
+        </div>
+        <div id="readMeta"></div>
+      </div>
+      <div id="body" hidden></div>
+      <div id="replies" hidden>
+        <div id="replyPrompt">Your answer:</div>
+        <div id="replyButtons"><button id="replyGood"></button><button id="replyBad"></button></div>
+      </div>
     </div>
   </div>
 
@@ -73,6 +96,7 @@
 
   let mails = [];
   let selectedId = null;
+  let onlyUnread = false;
   let typing = null;  // { mailId, answer, text, shown, status, timer } mientras CJ escribe
   let audio = null;
 
@@ -113,28 +137,52 @@
     body.append(text.slice(last));
   }
 
-  function render() {
-    const rows = byId('rows');
-    rows.textContent = '';
+  const textElement = (className, text) => {
+    const element = document.createElement('div');
+    element.className = className;
+    element.textContent = text;
+    return element;
+  };
 
-    // Lo más reciente, arriba.
-    for (const mail of [...mails].reverse()) {
-      const row = document.createElement('tr');
-      row.className = 'mail' + (mail.read ? '' : ' unread') + (mail.id === selectedId ? ' selected' : '');
-      const subject = (mail.answer ? '\u21A9 ' : '') + mail.subject;
-      for (const value of [mail.from, subject, mail.received]) {
-        const cell = document.createElement('td');
-        cell.textContent = value;
-        row.append(cell);
-      }
-      row.onclick = () => select(mail.id);
-      rows.append(row);
+  function buildRow(mail) {
+    const row = document.createElement('div');
+    row.className = 'mail' + (mail.read ? '' : ' unread') + (mail.id === selectedId ? ' selected' : '');
+
+    const top = document.createElement('div');
+    top.className = 'mailTop';
+    top.append(textElement('sender', mail.from || '(no sender)'), textElement('date', mail.received));
+
+    const subject = textElement('subject', (mail.answer ? '↩ ' : '') + (mail.subject || '(no subject)'));
+    if (mail.replyKey && !mail.answer) {
+      const tag = document.createElement('span');
+      tag.className = 'needsAnswer';
+      tag.textContent = 'ANSWER';
+      subject.append(tag);
     }
 
+    row.append(top, subject, textElement('preview', mail.body.replace(/\s+/g, ' ')));
+    row.onclick = () => select(mail.id);
+    return row;
+  }
+
+  function render() {
+    const rows = byId('rows');
+    const scroll = byId('list').scrollTop;
+    rows.textContent = '';
+
+    // Lo más reciente, arriba. Con el filtro, lo que se está leyendo no desaparece de golpe.
+    const visible = [...mails].reverse().filter((mail) => !onlyUnread || !mail.read || mail.id === selectedId);
+    for (const mail of visible) rows.append(buildRow(mail));
+    byId('list').scrollTop = scroll;
+
     const unread = mails.filter((mail) => !mail.read).length;
-    byId('summary').textContent = mails.length + (mails.length === 1 ? ' message' : ' messages') + ', ' + unread + ' unread';
+    byId('summary').textContent = unread === 0 ? 'No new messages' : unread === 1 ? '1 new message' : unread + ' new messages';
     document.title = unread ? 'EyeMail (' + unread + ')' : 'EyeMail';
-    byId('empty').hidden = mails.length > 0;
+
+    byId('empty').hidden = visible.length > 0;
+    byId('empty').textContent = mails.length === 0 ? 'Your mailbox is empty.' : "You've read everything.";
+    byId('showAll').classList.toggle('active', !onlyUnread);
+    byId('showUnread').classList.toggle('active', onlyUnread);
   }
 
   function buildReplyCard(mail, text, title, status) {
@@ -166,9 +214,9 @@
       byId('replies').hidden = true;
       return;
     }
-    byId('readFrom').textContent = mail.from;
-    byId('readReceived').textContent = mail.received;
-    byId('readSubject').textContent = mail.subject;
+
+    byId('readSubject').textContent = mail.subject || '(no subject)';
+    byId('readMeta').textContent = 'From: ' + mail.from + '  |  ' + mail.received;
     fillBody(mail.body);
     byId('body').scrollTop = 0;
 
@@ -256,14 +304,29 @@
   byId('replyGood').onclick = () => answer(1);
   byId('replyBad').onclick = () => answer(2);
 
+  byId('showAll').onclick = () => { onlyUnread = false; render(); };
+  byId('showUnread').onclick = () => { onlyUnread = true; render(); };
+
+  // Al borrar se abre el siguiente, para poder seguir limpiando la bandeja.
   byId('remove').onclick = () => {
     if (selectedId === null) return;
     finishTyping();
+
+    const newestFirst = [...mails].reverse();
+    const index = newestFirst.findIndex((mail) => mail.id === selectedId);
+    const next = newestFirst[index + 1] || newestFirst[index - 1];
+
     call('/api/delete/' + selectedId, 'POST');
     mails = mails.filter((mail) => mail.id !== selectedId);
     selectedId = null;
-    render();
-    renderReader();
+
+    if (next) {
+      select(next.id);
+    }
+    else {
+      render();
+      renderReader();
+    }
   };
 
   async function refresh() {

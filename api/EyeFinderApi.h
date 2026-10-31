@@ -1,4 +1,4 @@
-// EyeFinder92SA public API, version 2. Copy this file into your mod.
+// EyeFinder92SA public API, version 3. Copy this file into your mod.
 //
 // Every function is safe to call from any thread and at any time. Calls made before a
 // game is running wait in a queue. Text is UTF-8. If EyeFinder92SA isn't installed,
@@ -12,7 +12,7 @@
 #pragma once
 #include <windows.h>
 
-#define EF_API_VERSION 2
+#define EF_API_VERSION 3
 
 // How the player finds out about a new email.
 #define EF_NOTIFY_NONE 0   // Only the unread count on the computer changes.
@@ -70,6 +70,26 @@ typedef int(__cdecl* EF_GetReply_t)(const char* replyKey);
 // Returns 1 if accepted. It's refused if CLEO isn't installed, or later if the file can't be found.
 typedef int(__cdecl* EF_RunCleoScript_t)(const char* path);
 
+// Added in API version 3.
+//
+// Shared values are named pieces of data that mods, CLEO scripts and web pages can all read and
+// write. They're saved with the player's game. Use a prefix to avoid clashes, like "mymod.money".
+// Keys use letters, numbers, '.', '_' and '-', up to 63 characters. Text is up to 1023 bytes.
+//
+// int EF_SetValue(const char* key, const char* text): returns 1 if accepted.
+typedef int(__cdecl* EF_SetValue_t)(const char* key, const char* text);
+
+// int EF_SetValueInt(const char* key, int value): returns 1 if accepted.
+typedef int(__cdecl* EF_SetValueInt_t)(const char* key, int value);
+
+// int EF_GetValue(const char* key, char* buffer, int bufferSize)
+// Copies the text into buffer. Returns 1 if the value exists, or 0 if it doesn't.
+typedef int(__cdecl* EF_GetValue_t)(const char* key, char* buffer, int bufferSize);
+
+// int EF_GetValueInt(const char* key, int defaultValue)
+// Returns the value as a number, or defaultValue if it doesn't exist or isn't a number.
+typedef int(__cdecl* EF_GetValueInt_t)(const char* key, int defaultValue);
+
 #ifdef __cplusplus
 }
 
@@ -117,6 +137,26 @@ inline int GetReply(const char* replyKey) {
 inline int RunCleoScript(const char* path) {
 	const auto function = Find<EF_RunCleoScript_t>("EF_RunCleoScript");
 	return function ? function(path) : 0;
+}
+
+inline int SetValue(const char* key, const char* text) {
+	const auto function = Find<EF_SetValue_t>("EF_SetValue");
+	return function ? function(key, text) : 0;
+}
+
+inline int SetValueInt(const char* key, int value) {
+	const auto function = Find<EF_SetValueInt_t>("EF_SetValueInt");
+	return function ? function(key, value) : 0;
+}
+
+inline int GetValue(const char* key, char* buffer, int bufferSize) {
+	const auto function = Find<EF_GetValue_t>("EF_GetValue");
+	return function ? function(key, buffer, bufferSize) : 0;
+}
+
+inline int GetValueInt(const char* key, int defaultValue = 0) {
+	const auto function = Find<EF_GetValueInt_t>("EF_GetValueInt");
+	return function ? function(key, defaultValue) : defaultValue;
 }
 
 inline int GetUnreadCount() {

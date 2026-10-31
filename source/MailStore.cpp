@@ -29,7 +29,7 @@ bool WriteAtomically(const std::filesystem::path& path, const std::string& text)
 	return MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 }
 
-std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std::map<std::string, int>& replies) {
+std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std::map<std::string, int>& replies, const std::map<std::string, std::string>& values) {
 	json list = json::array();
 	for (const Mail& mail : mails) {
 		json item = {
@@ -49,7 +49,7 @@ std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std
 	}
 
 	// Un objeto por sistema: otras funciones del mod podrán guardar sus datos aquí.
-	const json root = { { "version", kFileVersion }, { "mail", { { "nextId", nextId }, { "mails", list }, { "replies", replies } } } };
+	const json root = { { "version", kFileVersion }, { "mail", { { "nextId", nextId }, { "mails", list }, { "replies", replies } } }, { "values", values } };
 	// Otro mod puede mandar UTF-8 no válido: se sustituye en lugar de fallar.
 	return root.dump(1, '\t', false, json::error_handler_t::replace);
 }
@@ -59,6 +59,7 @@ std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std
 void MailStore::Clear() {
 	mails_.clear();
 	replies_.clear();
+	values_.clear();
 	nextId_ = 1;
 	dirty_ = true;
 }
@@ -114,6 +115,13 @@ bool MailStore::Answer(uint32_t id, int answer, std::string& key, std::string& s
 	return false;
 }
 
+void MailStore::SetValue(const std::string& key, const std::string& value) {
+	auto found = values_.find(key);
+	if (found != values_.end() && found->second == value) return;
+	values_[key] = value;
+	dirty_ = true;
+}
+
 bool MailStore::MarkRead(uint32_t id) {
 	for (Mail& mail : mails_) {
 		if (mail.id == id && !mail.read) {
@@ -139,11 +147,11 @@ int MailStore::UnreadCount() const {
 
 void MailStore::FlushSession() {
 	if (!dirty_ || sessionPath_.empty()) return;
-	if (WriteAtomically(sessionPath_, Serialize(mails_, nextId_, replies_))) dirty_ = false;
+	if (WriteAtomically(sessionPath_, Serialize(mails_, nextId_, replies_, values_))) dirty_ = false;
 }
 
 bool MailStore::SaveTo(const std::filesystem::path& path) const {
-	return WriteAtomically(path, Serialize(mails_, nextId_, replies_));
+	return WriteAtomically(path, Serialize(mails_, nextId_, replies_, values_));
 }
 
 bool MailStore::LoadFrom(const std::filesystem::path& path) {
@@ -179,6 +187,7 @@ bool MailStore::LoadFrom(const std::filesystem::path& path) {
 		std::map<std::string, int> replies = mail.value("replies", std::map<std::string, int>{});
 		mails_ = std::move(loaded);
 		replies_ = std::move(replies);
+		values_ = root.value("values", std::map<std::string, std::string>{});
 		nextId_ = nextId;
 		dirty_ = true;
 		return true;

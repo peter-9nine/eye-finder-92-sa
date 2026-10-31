@@ -22,7 +22,7 @@ robocopy "$root\public" $target /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 
 # El mod de ejemplo de la API solo se instala si se pide. -Demo:$false no lo quita.
-if ($Demo) { Copy-Item "$root\tools\harness\build\Release\EyeFinderApiDemo.asi" $target -Force }
+if ($Demo) { Copy-Item "$root\tools\harness\build\Release\EyeFinderApiDemo.asi", "$root\examples\ApiDemo\values_test.efs" $target -Force }
 
 $size = (Get-ChildItem $target -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
 Write-Host ("Deployed to {0} ({1:N0} MB)" -f $target, $size)

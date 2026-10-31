@@ -47,6 +47,9 @@ void MailSystem::OnNewGame() {
 	pages_.clear();
 	store_.FlushSession();
 	api::ClearReplies();
+	api::ReplaceValues({});
+	stateSampleLogged_ = false;
+	stateSampleTime_ = GetTickCount() + 3000;
 	PublishUnreadCount();
 }
 
@@ -92,6 +95,7 @@ void MailSystem::OnGameLoaded() {
 
 	store_.FlushSession();
 	SyncReplies();
+	api::ReplaceValues(store_.Values());
 	PublishUnreadCount();
 }
 
@@ -160,10 +164,21 @@ void MailSystem::HandleApiRequests() {
 	}
 
 	if (changed) PublishUnreadCount();
+
+	for (const auto& [key, value] : api::DrainValueChanges()) store_.SetValue(key, value);
 }
 
 void MailSystem::HandleBrowserOperations() {
 	bool changed = false;
+
+	// Antes que los scripts: una página puede guardar un valor y lanzar el script que lo lee.
+	std::string valueKey;
+	std::string valueText;
+	while (overlay_->TakeValueOp(valueKey, valueText)) {
+		if (!api::IsValidValueKey(valueKey)) continue;
+		store_.SetValue(valueKey, valueText);
+		api::SetValueFromGame(valueKey, valueText);
+	}
 
 	ef::MailOp operation;
 	while (overlay_->TakeMailOp(operation)) {
@@ -237,6 +252,48 @@ void MailSystem::ShowNextPage() {
 	PagerRenderer::PlayBeep();
 }
 
+void MailSystem::PublishGameState() {
+	ef::GameStateData state{};
+
+	CPed* player = FindPlayerPed(-1);
+	if (player) {
+		state.inGame = 1;
+		state.money = CWorld::Players[0].m_nMoney;
+		state.health = player->m_fHealth;
+		state.armor = player->m_fArmour;
+		if (CWanted* wanted = FindPlayerWanted(-1)) state.wantedLevel = static_cast<int32_t>(wanted->m_nWantedLevel);
+		state.day = static_cast<int32_t>(CStats::GetStatValue(STAT_DAYS_PASSED_IN_GAME));
+		state.hour = CClock::ms_nGameClockHours;
+		state.minute = CClock::ms_nGameClockMinutes;
+
+		CVector position = player->GetPosition();
+		state.x = position.x;
+		state.y = position.y;
+		state.z = position.z;
+		state.interior = player->m_nAreaCode;
+		state.inVehicle = player->bInVehicle ? 1 : 0;
+		state.onMission = CTheScripts::IsPlayerOnAMission() ? 1 : 0;
+		state.weather = CWeather::NewWeatherType;
+
+		CZone* zone = nullptr;
+		CTheZones::GetZoneInfo(&position, &zone);
+		if (zone) {
+			if (const char* name = zone->GetTranslatedName()) strncpy_s(state.zone, ToPlainAscii(name).c_str(), _TRUNCATE);
+		}
+		strncpy_s(state.lastMission, CStats::LastMissionPassedName, 7);
+	}
+
+	overlay_->PublishGameState(state);
+
+	if (!stateSampleLogged_ && player && GetTickCount() >= stateSampleTime_) {
+		stateSampleLogged_ = true;
+		char line[256];
+		snprintf(line, sizeof(line), "Game state sample: money %d, health %.0f, armor %.0f, wanted %d, day %d, %02d:%02d, zone '%s', last mission '%s', on mission %d",
+			state.money, state.health, state.armor, state.wantedLevel, state.day, state.hour, state.minute, state.zone, state.lastMission, state.onMission);
+		Log(line);
+	}
+}
+
 void MailSystem::Update() {
 	if (needsWelcome_) {
 		needsWelcome_ = false;
@@ -253,7 +310,18 @@ void MailSystem::Update() {
 	HandleBrowserOperations();
 	ShowNextText();
 	ShowNextPage();
-	store_.FlushSession();
+
+	const DWORD now = GetTickCount();
+	if (now - lastStatePublished_ >= 200) {
+		lastStatePublished_ = now;
+		PublishGameState();
+	}
+
+	// Un script puede cambiar valores en cada fotograma: el disco no tiene por qué enterarse de todos.
+	if (now - lastFlush_ >= 250) {
+		lastFlush_ = now;
+		store_.FlushSession();
+	}
 }
 
 void MailSystem::Draw() {

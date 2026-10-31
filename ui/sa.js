@@ -79,7 +79,24 @@
       .then((response) => response.ok);
   }
 
-  window.sa = { runScript, sites, ads, fillAds, shuffle };
+  const gameHeaders = { 'X-EyeFinder': '1' };
+  const getGameJson = (path) => fetch(path, { cache: 'no-store', headers: gameHeaders }).then((response) => response.json());
+
+  // Lo que está pasando en el juego ahora mismo.
+  const state = () => getGameJson('/_game/state.json');
+
+  // Valores compartidos con los mods y los scripts de CLEO. Siempre son texto.
+  const values = () => getGameJson('/_game/values.json').then((data) => data.values);
+  const get = (key, fallback = null) => values().then((all) => (key in all ? all[key] : fallback));
+
+  function set(key, value) {
+    return fetch('/_game/value/' + encodeURIComponent(key), {
+      method: 'POST',
+      headers: { ...gameHeaders, 'X-EyeFinder-Value': encodeURIComponent(String(value)) },
+    }).then((response) => response.ok);
+  }
+
+  window.sa = { runScript, sites, ads, fillAds, shuffle, state, values, get, set };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => fillAds());
   else fillAds();

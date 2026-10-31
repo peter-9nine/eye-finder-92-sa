@@ -29,6 +29,7 @@ private:
 	void HandleBrowserOperations();
 	void RunCleoScript(const std::string& path);
 	void SyncReplies();
+	void PublishGameState();
 	void ShowNextText();
 	void ShowNextPage();
 	void Deliver(std::string from, std::string subject, std::string body);
@@ -46,4 +47,8 @@ private:
 	std::deque<PagerMessage> pages_;
 	DWORD lastDraw_ = 0;
 	DWORD lastTextShown_ = 0;
+	DWORD lastStatePublished_ = 0;
+	DWORD lastFlush_ = 0;
+	bool stateSampleLogged_ = false;
+	DWORD stateSampleTime_ = 0;
 };

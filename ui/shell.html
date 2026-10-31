@@ -77,7 +77,10 @@
 
   /* Hueco donde el helper compone la pestaña activa. */
   #content { flex: 1; min-height: 0; margin: 0 6px; background: #fff; border: 0; }
-  #statusBar { flex: none; height: 24px; display: flex; align-items: center; padding: 0 8px; margin: 2px 6px 2px; border: 1px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #statusBar { flex: none; height: 26px; display: flex; align-items: center; gap: 3px; padding: 0 2px 0 8px; margin: 2px 6px 2px; border: 1px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font-size: 13px; }
+  #statusText { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #statusBar .bevel { height: 20px; min-width: 22px; font-size: 13px; line-height: 12px; }
+  #zoomValue { width: 48px; }
 </style>
 </head>
 <body>
@@ -121,7 +124,12 @@
     <button class="bevel" id="newTab" title="New tab (Ctrl+T)">+</button>
   </div>
   <div id="content"></div>
-  <div id="statusBar"></div>
+  <div id="statusBar">
+    <div id="statusText"></div>
+    <button class="bevel" id="zoomOut" title="Zoom out (Ctrl+-)">-</button>
+    <button class="bevel" id="zoomValue" title="Reset the zoom (Ctrl+0)">100%</button>
+    <button class="bevel" id="zoomIn" title="Zoom in (Ctrl++)">+</button>
+  </div>
 </div>
 
 <div id="alertShade" role="alertdialog" aria-labelledby="alertTitle">
@@ -207,6 +215,7 @@
     const tab = activeTab();
     byId('back').disabled = !tab || !tab.back;
     byId('forward').disabled = !tab || !tab.forward;
+    byId('zoomValue').textContent = ((tab && tab.zoom) || 100) + '%';
     byId('reload').textContent = tab && tab.loading ? '✕' : '↻';
     byId('reload').title = tab && tab.loading ? 'Stop' : 'Reload (F5)';
     byId('titleText').textContent = 'SAN ANDREAS - WEB BROWSER' + (tab && tab.title ? ' - ' + tab.title : '');
@@ -240,7 +249,7 @@
     activeId = id;
     byId('address').blur();
     send({ cmd: 'activateTab', id });
-    byId('statusBar').textContent = '';
+    byId('statusText').textContent = '';
     render();
   }
 
@@ -324,7 +333,7 @@
         badge.style.display = unread > 0 ? 'block' : 'none';
       }
     },
-    onStatus(text) { byId('statusBar').textContent = text; },
+    onStatus(text) { byId('statusText').textContent = text; },
     openTab,
     shortcut(action) {
       if (windowState !== 'open') return;
@@ -374,6 +383,9 @@
     else send({ cmd: 'navigate', url });
   };
   byId('alertStay').onclick = closeInternetAlert;
+  byId('zoomIn').onclick = () => send({ cmd: 'zoom', direction: 1 });
+  byId('zoomOut').onclick = () => send({ cmd: 'zoom', direction: -1 });
+  byId('zoomValue').onclick = () => send({ cmd: 'zoom', direction: 0 });
   byId('back').onclick = () => send({ cmd: 'back' });
   byId('forward').onclick = () => send({ cmd: 'forward' });
   byId('reload').onclick = () => {

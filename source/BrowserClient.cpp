@@ -157,6 +157,29 @@ bool BrowserClient::TakeSiteScript(std::string& name) {
 	return true;
 }
 
+bool BrowserClient::TakeValueOp(std::string& key, std::string& value) {
+	if (!header_) return false;
+
+	const uint32_t read = header_->valueOpRead.load(std::memory_order_relaxed);
+	if (read == header_->valueOpWrite.load(std::memory_order_acquire)) return false;
+
+	const ef::ValueOp& entry = header_->valueOps[read % ef::kValueOpRingSize];
+	key.assign(entry.key, strnlen(entry.key, ef::kValueKeySize));
+	value.assign(entry.value, strnlen(entry.value, ef::kValueTextSize));
+	header_->valueOpRead.store(read + 1, std::memory_order_release);
+	return true;
+}
+
+void BrowserClient::PublishGameState(const ef::GameStateData& state) {
+	if (!header_) return;
+
+	const uint32_t sequence = header_->gameStateSequence.load(std::memory_order_relaxed);
+	header_->gameStateSequence.store(sequence + 1, std::memory_order_release);
+	std::atomic_thread_fence(std::memory_order_release);
+	header_->gameState = state;
+	header_->gameStateSequence.store(sequence + 2, std::memory_order_release);
+}
+
 bool BrowserClient::TakeCloseRequest() {
 	return header_ && header_->closeRequest.exchange(0, std::memory_order_acq_rel) != 0;
 }

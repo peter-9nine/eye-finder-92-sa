@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <cctype>
+#include <cmath>
 #include <map>
 #include <set>
 #include <string>
@@ -202,6 +203,58 @@ std::string ListAsJson(const char* name, CefRefPtr<CefListValue> list) {
 	return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
 }
 
+std::string BuildGameStateJson() {
+	ef::GameStateData state{};
+	for (int attempt = 0; attempt < 64; ++attempt) {
+		const uint32_t before = gHeader->gameStateSequence.load(std::memory_order_acquire);
+		if (before % 2 != 0) continue;
+		std::memcpy(&state, &gHeader->gameState, sizeof(state));
+		std::atomic_thread_fence(std::memory_order_acquire);
+		if (gHeader->gameStateSequence.load(std::memory_order_relaxed) == before) break;
+	}
+	state.zone[sizeof(state.zone) - 1] = '\0';
+	state.lastMission[sizeof(state.lastMission) - 1] = '\0';
+
+	CefRefPtr<CefDictionaryValue> result = CefDictionaryValue::Create();
+	result->SetBool("inGame", state.inGame != 0);
+	result->SetInt("money", state.money);
+	result->SetDouble("health", state.health);
+	result->SetDouble("armor", state.armor);
+	result->SetInt("wantedLevel", state.wantedLevel);
+	result->SetInt("day", state.day);
+	result->SetInt("hour", state.hour);
+	result->SetInt("minute", state.minute);
+	result->SetDouble("x", state.x);
+	result->SetDouble("y", state.y);
+	result->SetDouble("z", state.z);
+	result->SetInt("interior", state.interior);
+	result->SetBool("inVehicle", state.inVehicle != 0);
+	result->SetBool("onMission", state.onMission != 0);
+	result->SetInt("weather", state.weather);
+	result->SetString("zone", state.zone);
+	result->SetString("lastMission", state.lastMission);
+
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(result);
+	return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+}
+
+// Solo los valores: el archivo de la partida también tiene el correo, que no es para cualquier sitio.
+std::string BuildValuesJson() {
+	CefRefPtr<CefDictionaryValue> session = ReadJsonObject(fs::path(gMailPath));
+	CefRefPtr<CefDictionaryValue> result = CefDictionaryValue::Create();
+	if (session && session->HasKey("values") && session->GetType("values") == VTYPE_DICTIONARY) {
+		result->SetDictionary("values", session->GetDictionary("values"));
+	}
+	else {
+		result->SetDictionary("values", CefDictionaryValue::Create());
+	}
+
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(result);
+	return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+}
+
 std::string BuildSitesJson() {
 	CefRefPtr<CefListValue> list = CefListValue::Create();
 	size_t index = 0;
@@ -305,6 +358,28 @@ CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs:
 	if (path.rfind("/_game/ad/", 0) == 0) return ServeAdImage(path.substr(10));
 
 	if (request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
+
+	if (path == "/_game/state.json") return JsonResponse(200, BuildGameStateJson());
+	if (path == "/_game/values.json") return JsonResponse(200, BuildValuesJson());
+
+	if (path.rfind("/_game/value/", 0) == 0 && request->GetMethod().ToString() == "POST") {
+		const std::string key = path.substr(13);
+		const std::string value = CefURIDecode(request->GetHeaderByName("X-EyeFinder-Value"), true,
+			static_cast<cef_uri_unescape_rule_t>(UU_SPACES | UU_PATH_SEPARATORS | UU_URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS)).ToString();
+
+		const bool validKey = !key.empty() && key.size() < ef::kValueKeySize &&
+			key.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == std::string::npos;
+		if (!validKey || value.size() >= ef::kValueTextSize) return JsonResponse(400, "{}");
+
+		const uint32_t write = gHeader->valueOpWrite.load(std::memory_order_relaxed);
+		if (write - gHeader->valueOpRead.load(std::memory_order_acquire) >= ef::kValueOpRingSize) return JsonResponse(503, "{}");
+		ef::ValueOp& entry = gHeader->valueOps[write % ef::kValueOpRingSize];
+		std::memset(&entry, 0, sizeof(entry));
+		std::memcpy(entry.key, key.data(), key.size());
+		std::memcpy(entry.value, value.data(), value.size());
+		gHeader->valueOpWrite.store(write + 1, std::memory_order_release);
+		return JsonResponse(200, "{}");
+	}
 
 	if (path.rfind("/_game/script/", 0) == 0 && request->GetMethod().ToString() == "POST") {
 		// Solo nombres simples y solo de la carpeta scripts del propio sitio.
@@ -574,7 +649,38 @@ public:
 		return true;
 	}
 
+	// El zoom es de la pestaña y sobrevive a navegar. Chromium lo guarda por dominio, así que se vuelve a aplicar.
+	void ApplyZoom() {
+		if (Host()) Host()->SetZoomLevel(std::log(zoomPercent_ / 100.0) / std::log(1.2));
+	}
+
+	void ChangeZoom(int direction) {
+		static const int kSteps[] = { 50, 67, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300 };
+		if (direction == 0) {
+			zoomPercent_ = 100;
+		}
+		else if (direction > 0) {
+			for (const int step : kSteps) {
+				if (step > zoomPercent_) {
+					zoomPercent_ = step;
+					break;
+				}
+			}
+		}
+		else {
+			for (auto step = std::rbegin(kSteps); step != std::rend(kSteps); ++step) {
+				if (*step < zoomPercent_) {
+					zoomPercent_ = *step;
+					break;
+				}
+			}
+		}
+		ApplyZoom();
+		SendState();
+	}
+
 	void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int) override {
+		if (!IsShell() && frame->IsMain()) ApplyZoom();
 		if (IsShell() && frame->IsMain()) {
 			CefRefPtr<CefValue> value = CefValue::Create();
 			value->SetInt(gUnreadMail);
@@ -634,6 +740,7 @@ private:
 		state->SetBool("loading", loading_);
 		state->SetBool("back", canBack_);
 		state->SetBool("forward", canForward_);
+		state->SetInt("zoom", zoomPercent_);
 		CefRefPtr<CefValue> value = CefValue::Create();
 		value->SetDictionary(state);
 		CallShell("onTab", value);
@@ -660,6 +767,7 @@ private:
 	bool loading_ = false;
 	bool canBack_ = false;
 	bool canForward_ = false;
+	int zoomPercent_ = 100;
 
 	IMPLEMENT_REFCOUNTING(View);
 };
@@ -795,6 +903,7 @@ void ActivateTab(int id) {
 
 	if (View* tab = ActiveTabView()) {
 		if (tab->Host()) {
+			tab->ApplyZoom();
 			tab->Host()->Invalidate(PET_VIEW);
 			SetKeyboardTarget(tab);
 		}
@@ -853,6 +962,9 @@ bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 			page->GetMainFrame()->LoadURL(url);
 			SetKeyboardTarget(active);
 		}
+	}
+	else if (command == "zoom") {
+		if (active) active->ChangeZoom(message->GetInt("direction"));
 	}
 	else if (command == "back") {
 		if (page) page->GoBack();
@@ -1015,6 +1127,23 @@ bool HandleShortcut(const ef::Event& event) {
 	}
 
 	if (!control) return false;
+
+	// Ctrl con +, - o 0, también los del teclado numérico.
+	if (tab && gContentVisible) {
+		if (event.a == VK_OEM_PLUS || event.a == VK_ADD) {
+			tab->ChangeZoom(1);
+			return true;
+		}
+		if (event.a == VK_OEM_MINUS || event.a == VK_SUBTRACT) {
+			tab->ChangeZoom(-1);
+			return true;
+		}
+		if (event.a == '0' || event.a == VK_NUMPAD0) {
+			tab->ChangeZoom(0);
+			return true;
+		}
+	}
+
 	const char* action = nullptr;
 	switch (event.a) {
 	case 'T': action = "newTab"; break;
@@ -1075,6 +1204,11 @@ void HandleEvent(const ef::Event& event) {
 
 	case ef::EventType::Wheel: {
 		View* target = HitTest(event.x, event.y);
+		// Ctrl y rueda sobre una página: zoom.
+		if ((event.modifiers & ef::kModControl) && target && !target->IsShell()) {
+			target->ChangeZoom(event.b > 0 ? 1 : -1);
+			break;
+		}
 		if (target && target->Host()) target->Host()->SendMouseWheelEvent(MouseFor(target, event), event.a, event.b);
 		break;
 	}

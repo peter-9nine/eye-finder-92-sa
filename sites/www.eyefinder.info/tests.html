@@ -26,6 +26,8 @@
     <p>Reading the inbox from another site: <span id="crossSite">checking</span></p>
     <p>Real internet from this page: fetch <span id="netFetch">checking</span>, WebSocket <span id="netSocket">checking</span>, WebRTC <span id="netRtc">checking</span></p>
     <p id="media"></p>
+    <p>Game state: <span id="gameState">checking</span></p>
+    <p>Shared value from the game: <span id="pong">waiting</span></p>
   </section>
   <section>
     <h2>Animation test</h2>
@@ -76,6 +78,13 @@ let clicks = 0;
   const probe = document.createElement('video');
   const formats = { WebM: 'video/webm; codecs="vp9,opus"', Ogg: 'audio/ogg; codecs="opus"', MP3: 'audio/mpeg', 'H.264': 'video/mp4; codecs="avc1.42E01E"', AAC: 'audio/mp4; codecs="mp4a.40.2"' };
   byId('media').textContent = 'Media: ' + Object.entries(formats).map(([name, type]) => name + '=' + (probe.canPlayType(type) || 'no')).join(', ');
+
+  sa.set('tests.ping', 'hello from the page');
+  setInterval(async () => {
+    const state = await sa.state();
+    byId('gameState').textContent = '$' + state.money + ', ' + state.health + ' health, ' + state.wantedLevel + ' stars, ' + state.zone + ', day ' + state.day + ', mission ' + state.lastMission;
+    byId('pong').textContent = await sa.get('tests.pong', 'waiting');
+  }, 400);
 
   byId('dropdown').onchange = (e) => { byId('picked').textContent = e.target.value; };
 

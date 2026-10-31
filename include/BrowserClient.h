@@ -29,6 +29,8 @@ public:
 	bool TakeCloseRequest();
 	bool TakeMailOp(ef::MailOp& operation);
 	bool TakeSiteScript(std::string& name);
+	bool TakeValueOp(std::string& key, std::string& value);
+	void PublishGameState(const ef::GameStateData& state);
 
 private:
 	HANDLE mapping_ = nullptr;

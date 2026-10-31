@@ -1,5 +1,6 @@
 #pragma once
 // Cola entre la API pública, que se puede llamar desde cualquier hilo, y el hilo del juego.
+#include <map>
 #include <string>
 #include <vector>
 
@@ -29,5 +30,11 @@ void SetUnreadCount(int count);
 // Lo que ha respondido el jugador en esta partida, para EF_GetReply desde cualquier hilo.
 void ClearReplies();
 void SetReply(const std::string& key, int answer);
+
+// Valores compartidos. La API los ve al momento; la partida los recoge en el hilo del juego.
+bool IsValidValueKey(const std::string& key);
+std::map<std::string, std::string> DrainValueChanges();
+void ReplaceValues(const std::map<std::string, std::string>& values);
+void SetValueFromGame(const std::string& key, const std::string& value);
 
 }  // namespace api

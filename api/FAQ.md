@@ -133,7 +133,7 @@ It's a current version of Chromium, so modern HTML, CSS and JavaScript all work.
 
 ### How big should my page be?
 
-There's no fixed size, because it depends on the player's resolution. At 1280x720, the page area is about 944x588 pixels, and the player can maximize the window. Use a flexible layout, and test at more than one size. Long pages scroll normally.
+There's no fixed size, because it depends on the player's resolution. At 1280x720, the page area is about 944x586 pixels, and the player can maximize the window. Players can also zoom a page, with the buttons in the status bar, Ctrl and `+` or `-`, or Ctrl and the mouse wheel. Use a flexible layout, and test at more than one size. Long pages scroll normally.
 
 ### How do I make it look like 1992?
 
@@ -159,9 +159,119 @@ You can link to them, and show their images. JavaScript can't read data from ano
 
 Pages have no way to read or write the mod's save files.
 
-### Can a page read the player's money, missions or email?
+### Can a page read the player's inbox?
 
-No, not yet. The only game feature pages have today is starting a CLEO script. Pages can't read anything from the game, and only the built-in mail site can read the inbox. A public site named `mail.eyefinder.info` wouldn't get access either.
+No. Only the mod's own mail site can read it. A public site named `mail.eyefinder.info` wouldn't get access either.
+
+## Talking to the game
+
+### Can a page know what's happening in the game?
+
+Yes. Load `sa.js`, then call `sa.state()` whenever you need it:
+
+```html
+<script src="/_game/sa.js"></script>
+<script>
+  async function update() {
+    const game = await sa.state();
+    document.getElementById('cash').textContent = '$' + game.money;
+  }
+  update();
+  setInterval(update, 1000);
+</script>
+```
+
+| Field | Meaning |
+|---|---|
+| `inGame` | `true` once a game is running |
+| `money` | CJ's money |
+| `health`, `armor` | CJ's health and armor |
+| `wantedLevel` | Wanted stars, 0 to 6 |
+| `day`, `hour`, `minute` | Days passed in the game, and the game clock |
+| `x`, `y`, `z` | CJ's position |
+| `zone` | The area's name, such as `Ganton` |
+| `interior` | The interior number, or 0 when outside |
+| `inVehicle`, `onMission` | `true` or `false` |
+| `weather` | The game's weather number |
+| `lastMission` | Internal name of the last mission passed, such as `SWEET_1`. It can be empty. |
+
+It's read-only, updates about five times a second, and works in every local site. This makes things like a mission lock easy: compare `lastMission` in your page and hide what isn't available yet. [`MissionOrder.txt`](MissionOrder.txt) lists the missions in story order.
+
+### What if I need something that isn't in that list?
+
+Use a CLEO script and shared values. Your script reads anything it can from the game and writes it to a value, and your page reads that value. See the next question.
+
+### What are shared values?
+
+Named pieces of text that pages, CLEO scripts and mods can all read and write. **They're saved with the player's game**, in that save's file in `save data`, so they're the right place for story progress.
+
+From a page:
+
+```js
+await sa.set('mymod.visited', 'yes');
+const visited = await sa.get('mymod.visited', 'no');   // 'no' is used if it doesn't exist
+const everything = await sa.values();
+```
+
+- Keys use letters, numbers, `.`, `_` and `-`, up to 63 characters. Start yours with a prefix, such as `mymod.`, because every site and mod shares the same values.
+- Values are always text, up to 1023 bytes. Use `Number(value)` in a page when you need a number.
+- A value set from a page reaches scripts and mods on the game's next frame. It can take about a quarter of a second to appear in `sa.get()`.
+
+### How does a page send data to a CLEO script, and get a result back?
+
+With shared values. Set the input, run the script, then watch for the result:
+
+```js
+await sa.set('casino.bet', 500);
+await sa.set('casino.result', '');
+await sa.runScript('casino_spin');
+
+const timer = setInterval(async () => {
+  const result = await sa.get('casino.result', '');
+  if (result) {
+    clearInterval(timer);
+    show(result);
+  }
+}, 300);
+```
+
+The value is always available to the script before it starts. Your script reads `casino.bet` and writes `casino.result`, as in the next question. Clear the result first, as above, because values are saved and the last result is still there.
+
+### How does a CLEO script read and write shared values?
+
+Through the functions in `EyeFinder92SA.asi`, using CLEO's DLL opcodes. This is `examples\ApiDemo\values_test.txt`, which has been run in the real game with CLEO 5.4.0:
+
+```
+0AA2: 0@ = load_dynamic_library "EyeFinder92SA.asi"
+0AA4: 1@ = get_proc_address "EF_GetValueInt" library 0@
+0AA4: 2@ = get_proc_address "EF_SetValueInt" library 0@
+0AA4: 3@ = get_proc_address "EF_SetValue" library 0@
+
+// value = EF_GetValueInt("casino.bet", 0)
+0AA7: call_function_return 1@ num_params 2 pop 2 0 "casino.bet" 4@
+
+// EF_SetValueInt("casino.winnings", value)
+0AA7: call_function_return 2@ num_params 2 pop 2 4@ "casino.winnings" 5@
+
+// EF_SetValue("casino.result", "You won!")
+0AA7: call_function_return 3@ num_params 2 pop 2 "You won!" "casino.result" 5@
+```
+
+Three details matter:
+
+- **Arguments go in reverse order**, so the function's last parameter comes first.
+- **`num_params` and `pop` are both the number of arguments.**
+- **The last variable receives the return value**, even if you don't need it.
+
+Scripts that keep running can call these as often as they like, for example to publish a value every second.
+
+### Can a script that's always running react to a page?
+
+Yes. Run your script as a normal `.cs` in the `cleo` folder, have it check a value in a loop, and have your page set that value. This way the page doesn't need `sa.runScript()` at all.
+
+### What can't pages do?
+
+They can't change the game directly: `sa.state()` is read-only. To change something, such as giving money, have your page run a CLEO script.
 
 ## CLEO scripts
 
@@ -205,11 +315,11 @@ const accepted = await sa.runScript('give_money');
 if (!accepted) status.textContent = 'Something went wrong.';
 ```
 
-`true` only means the script was sent to the game. **It doesn't mean the script succeeded**, and no result comes back to the page. Successes and failures to start are written to `modloader\EyeFinder92SA\EyeFinder92SA.log`, and CLEO writes more detail to `cleo.log` in the game folder.
+`true` only means the script was sent to the game. **It doesn't mean the script succeeded.** To get a result back, use shared values. Successes and failures to start are written to `modloader\EyeFinder92SA\EyeFinder92SA.log`, and CLEO writes more detail to `cleo.log` in the game folder.
 
 ### Can I pass values to a script, or get values back?
 
-No. A script starts with no parameters and can't send anything back to the page. To offer different actions, write a separate script for each.
+Not directly, because a script starts with no parameters. Use shared values instead, as described in [Talking to the game](#talking-to-the-game).
 
 ### When does the script run?
 
@@ -229,7 +339,14 @@ button.onclick = () => {
 };
 ```
 
-Reloading the page resets a button like this. For something that must truly happen once per saved game, keep track of it inside your CLEO script using CLEO's own save features.
+Reloading the page resets a button like this. For something that must truly happen once per saved game, keep track of it with a shared value, which is saved with the game:
+
+```js
+if ((await sa.get('mysite.prize_claimed', 'no')) === 'no') {
+  await sa.set('mysite.prize_claimed', 'yes');
+  await sa.runScript('give_money');
+}
+```
 
 ### Can a real website run my scripts?
 
@@ -241,7 +358,14 @@ No. Only pages in the site's own folder can start its scripts, and the browser b
 
 ### Can a CLEO script send an email?
 
-Yes, in principle, because the API is made of plain functions in `EyeFinder92SA.asi`. A script can use CLEO's `0AA2` (`LOAD_DYNAMIC_LIBRARY`), `0AA4` (`GET_DYNAMIC_LIBRARY_PROCEDURE`) and `0AA7` (`CALL_FUNCTION_RETURN`) to call `EF_SendEmail`. **This hasn't been tested yet.** The functions and their parameters are listed in [`EyeFinderApi.h`](EyeFinderApi.h), and all of them use the `cdecl` calling convention.
+Yes, in the same way as shared values, with the function's arguments in reverse order. For example, for `EF_SendEmail(from, subject, body, notify)`:
+
+```
+0AA4: 1@ = get_proc_address "EF_SendEmail" library 0@
+0AA7: call_function_return 1@ num_params 4 pop 4 1 "Meet me at the spot." "You in?" "Ryder" 2@
+```
+
+The method has been tested with the shared value functions, but this exact call hasn't been run yet. The functions and their parameters are listed in [`EyeFinderApi.h`](EyeFinderApi.h), and all of them use the `cdecl` calling convention. A single call can pass at most 5 text arguments, so `EF_SendEmailWithReplies` can't be fully used from a script with literals.
 
 ### What about scripts for email answers?
 

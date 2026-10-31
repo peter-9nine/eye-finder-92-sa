@@ -1,0 +1,18 @@
+// The source of values_test.efs, in Sanny Builder's opcode syntax.
+// It reads a shared value and writes two back. Arguments go in reverse order: last one first.
+
+0AA2: 0@ = load_dynamic_library "EyeFinder92SA.asi"
+0AA4: 1@ = get_proc_address "EF_GetValueInt" library 0@
+0AA4: 2@ = get_proc_address "EF_SetValueInt" library 0@
+0AA4: 3@ = get_proc_address "EF_SetValue" library 0@
+
+// value = EF_GetValueInt("test.in", -1)
+0AA7: call_function_return 1@ num_params 2 pop 2 -1 "test.in" 4@
+
+// EF_SetValueInt("test.out", value)
+0AA7: call_function_return 2@ num_params 2 pop 2 4@ "test.out" 5@
+
+// EF_SetValue("test.text", "hello from cleo")
+0AA7: call_function_return 3@ num_params 2 pop 2 "hello from cleo" "test.text" 5@
+
+0A93: terminate_this_custom_script

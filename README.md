@@ -18,6 +18,8 @@ A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https:
 | Ctrl+T, Ctrl+W | New tab, close tab |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next tab, previous tab |
 | Ctrl+L | Go to the address bar |
+| Ctrl and + or -, or Ctrl+wheel | Zoom in or out |
+| Ctrl+0 | Reset the zoom |
 | F5 | Reload |
 | Alt+Left, Alt+Right | Back, forward |
 
@@ -77,6 +79,10 @@ int reply = eyefinder::GetReply("mymod_ryder_meeting");
 
 // Start a CLEO script right away
 eyefinder::RunCleoScript("mymod_script.cs");
+
+// Values shared with web pages and CLEO scripts, saved with the player's game
+eyefinder::SetValueInt("mymod.level", 3);
+int level = eyefinder::GetValueInt("mymod.level", 0);
 ```
 
 - Calls are safe from any thread, and do nothing if EyeFinder92SA isn't installed.
@@ -103,6 +109,8 @@ sites\www.mysite.com\
 ```
 
 A site's script is a compiled CLEO script renamed from `.cs` to `.efs`. This matters because modloader starts every `.cs` file in a mod folder when the game starts. For the same reason, a script started from an email answer shouldn't be a `.cs` file inside a modloader folder, unless you also want it to run at startup.
+
+Pages can read the game's state with `sa.state()`, and share data with scripts and mods using `sa.get()` and `sa.set()`. The [FAQ](api/FAQ.md) has examples, including reading and writing values from a CLEO script.
 
 A site can only start scripts from its own `scripts` folder, using simple names. Real websites can't start scripts at all. **Installing a site with scripts is like installing a mod, because CLEO scripts can do anything the game can, so only install sites you trust.** CLEO is optional: without it, these requests are logged and ignored. Tested with CLEO 5.4.0.
 

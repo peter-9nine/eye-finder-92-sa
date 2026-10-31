@@ -63,6 +63,14 @@ void SelfTest() {
 	Sleep(1000);
 	Log("Self test: reply state " + std::to_string(eyefinder::GetReply("apidemo_selftest")));
 
+	// A real CLEO script reads a value and writes two back. See values_test.txt.
+	eyefinder::SetValueInt("test.in", 41);
+	eyefinder::RunCleoScript((ModuleDirectory() + "\\values_test.efs").c_str());
+	Sleep(2000);
+	char text[64];
+	const int found = eyefinder::GetValue("test.text", text, sizeof(text));
+	Log("Self test: CLEO read and wrote " + std::to_string(eyefinder::GetValueInt("test.out", -99)) + ", text " + (found ? text : "(none)"));
+
 	// The plugin's log should show this help box text only once.
 	eyefinder::SendEmail("Test", "Notification test", "Body", EF_NOTIFY_TEXT);
 }

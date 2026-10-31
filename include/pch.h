@@ -19,5 +19,9 @@
 #include <CMenuManager.h>
 #include <CStats.h>
 #include <CTheScripts.h>
+#include <CTheZones.h>
+#include <CWeather.h>
+#include <CWorld.h>
+#include <CZone.h>
 #include <RenderWare.h>
 #include <enums/eStats.h>
