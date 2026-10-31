@@ -54,6 +54,20 @@
   #toolbar #go { width: 44px; font-size: 14px; }
   #address { flex: 1; min-width: 0; height: 28px; margin: 0 4px; padding: 0 6px; background: #fff; border: 2px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font: 15px var(--ui-font); outline: 0; user-select: text; }
 
+  #netMode { width: 88px !important; font-size: 12px !important; font-weight: bold; }
+  #netMode.internet { background: #c00000; color: #fff; text-shadow: none; }
+
+  /* Aviso de la época. Mientras está abierto, la pestaña se oculta: se compone por encima de la interfaz. */
+  #alertShade { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
+  #alertBox { width: 560px; max-width: calc(100vw - 32px); background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
+  #alertTitle { height: 26px; line-height: 26px; padding: 0 10px; color: #fff; background: linear-gradient(90deg, #800000, #d04010); font: bold 15px var(--title-font); }
+  #alertBody { display: flex; gap: 14px; padding: 16px; }
+  #alertIcon { flex: none; width: 40px; height: 40px; border-radius: 50%; background: #d00000; border: 2px solid #000; color: #fff; font: bold 28px/36px Georgia, serif; text-align: center; }
+  #alertText p { margin: 0 0 8px; }
+  #alertUrl { font-family: "Courier New", monospace; font-size: 13px; overflow-wrap: anywhere; }
+  #alertButtons { display: flex; justify-content: center; gap: 20px; padding: 0 16px 16px; }
+  #alertButtons .bevel { width: 170px; height: 32px; }
+
   #tabBar { flex: none; height: 30px; display: flex; align-items: flex-end; gap: 2px; padding: 4px 6px 0; overflow: hidden; }
   .tab { flex: 0 1 190px; min-width: 60px; height: 25px; display: flex; align-items: center; padding: 0 3px 0 8px; background: #b0b0b0; border: 2px solid; border-bottom: 0; border-color: var(--light) var(--darker) transparent var(--light); cursor: pointer; }
   .tab.active { height: 26px; background: var(--grey); font-weight: bold; }
@@ -101,12 +115,31 @@
     <button class="bevel" id="mail" title="Mail">✉<span class="badge" id="toolbarBadge"></span></button>
     <input id="address" spellcheck="false" autocomplete="off" aria-label="Address">
     <button class="bevel" id="go">Go</button>
+    <button class="bevel" id="netMode" title="Local sites only. Click to connect to the real internet.">LOCAL</button>
   </div>
   <div id="tabBar">
     <button class="bevel" id="newTab" title="New tab (Ctrl+T)">+</button>
   </div>
   <div id="content"></div>
   <div id="statusBar"></div>
+</div>
+
+<div id="alertShade" role="alertdialog" aria-labelledby="alertTitle">
+  <div id="alertBox">
+    <div id="alertTitle">Connect to the real internet?</div>
+    <div id="alertBody">
+      <div id="alertIcon">!</div>
+      <div id="alertText">
+        <p id="alertReason"></p>
+        <p id="alertUrl"></p>
+        <p>You will leave the sites stored with the mod. Real websites can see your real IP address, and this browser has no security sandbox. Only visit sites you trust, and don't log in to your accounts.</p>
+      </div>
+    </div>
+    <div id="alertButtons">
+      <button class="bevel" id="alertConnect">Connect</button>
+      <button class="bevel" id="alertStay">Stay local</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -123,6 +156,8 @@
   let activeId = -1;
   let nextId = 1;
   let windowState = 'closed';  // closed, open o minimized
+  let internet = false;
+  let pendingInternet = null;  // { url, newTab } mientras el aviso está abierto
 
   const activeTab = () => tabs.find((tab) => tab.id === activeId);
 
@@ -131,7 +166,7 @@
     send({
       cmd: 'layout',
       x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height),
-      visible: windowState === 'open' && tabs.length > 0,
+      visible: windowState === 'open' && tabs.length > 0 && !pendingInternet,
     });
   }
 
@@ -248,6 +283,33 @@
     else openTab(url);
   }
 
+  // Siempre se pregunta: no hay "no volver a preguntar".
+  function askForInternet(url, newTab) {
+    pendingInternet = { url, newTab };
+    byId('alertReason').textContent = url
+      ? 'This address is on the real internet, and you are browsing local sites only:'
+      : 'You are browsing local sites only.';
+    byId('alertUrl').textContent = url || '';
+    byId('alertUrl').style.display = url ? 'block' : 'none';
+    byId('address').blur();
+    byId('alertShade').style.display = 'flex';
+    sendLayout();
+  }
+
+  function closeInternetAlert() {
+    pendingInternet = null;
+    byId('alertShade').style.display = 'none';
+    sendLayout();
+  }
+
+  function setInternet(enabled) {
+    internet = enabled;
+    send({ cmd: 'setInternet', enabled });
+    byId('netMode').textContent = enabled ? 'INTERNET' : 'LOCAL';
+    byId('netMode').classList.toggle('internet', enabled);
+    byId('netMode').title = enabled ? 'Connected to the real internet. Click to go back to local sites only.' : 'Local sites only. Click to connect to the real internet.';
+  }
+
   // --- Llamadas desde el helper ---
   window.ef = {
     onTab(state) {
@@ -255,6 +317,7 @@
       if (tab) Object.assign(tab, state);
       render();
     },
+    onBlocked(details) { askForInternet(details.url, details.newTab); },
     onMail(unread) {
       for (const badge of [byId('desktopBadge'), byId('toolbarBadge')]) {
         badge.textContent = unread > 99 ? '99+' : unread;
@@ -298,6 +361,19 @@
     byId('window').classList.toggle('maximized');
     sendLayout();
   };
+  byId('netMode').onclick = () => {
+    if (internet) setInternet(false);
+    else askForInternet('', false);
+  };
+  byId('alertConnect').onclick = () => {
+    const { url, newTab } = pendingInternet;
+    setInternet(true);
+    closeInternetAlert();
+    if (!url) return;
+    if (newTab) openTab(url);
+    else send({ cmd: 'navigate', url });
+  };
+  byId('alertStay').onclick = closeInternetAlert;
   byId('back').onclick = () => send({ cmd: 'back' });
   byId('forward').onclick = () => send({ cmd: 'forward' });
   byId('reload').onclick = () => {

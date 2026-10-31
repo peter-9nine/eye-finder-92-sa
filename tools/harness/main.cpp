@@ -38,6 +38,9 @@ constexpr POINT kNewTabWithOneTab = { 373, 87 };
 constexpr POINT kMinimize = { 1056, 15 };
 constexpr POINT kRestore = { 60, 680 };
 constexpr POINT kMailButton = { 346, 51 };
+constexpr POINT kNetMode = { 1070, 51 };
+constexpr POINT kConnect = { 545, 437 };
+constexpr POINT kStayLocal = { 735, 437 };
 
 // mail.eyefinder.info
 constexpr POINT kFirstMailRow = { 500, 187 };
@@ -417,7 +420,17 @@ int wmain(int argc, wchar_t** argv) {
 	// Segunda pestaña -> internet real, sin perder la primera.
 	Click(kNewTabWithOneTab);
 	Run(1000);
-	GoTo("https://en.wikipedia.org/wiki/Grand_Theft_Auto:_San_Andreas", 5000);
+
+	// Empieza en local: una dirección real pregunta, y negarse no la carga.
+	const char* const kRealSite = "https://en.wikipedia.org/wiki/Grand_Theft_Auto:_San_Andreas";
+	GoTo(kRealSite, 800);
+	Shot("05b_internet_alert");
+	Click(kStayLocal);
+	Run(1500);
+	Shot("05c_stayed_local");
+	GoTo(kRealSite, 800);
+	Click(kConnect);
+	Run(5000);
 	Shot("06_second_tab_real_site");
 	Measure("real site", 5000, true);
 
@@ -448,6 +461,22 @@ int wmain(int argc, wchar_t** argv) {
 	Click(kTab1);
 	GoTo("www.eyefinder.info/tests.html?animate", 1000);
 	Measure("animated page", 5000, false);
+	Shot("12a_internet_mode_network_reached");
+
+	// Volver a local no pregunta y saca a las pestañas de las webs reales. Volver a internet pregunta otra vez.
+	Click(kTab2);
+	Run(300);
+	Click(kNetMode);
+	Run(1500);
+	Shot("12b_back_to_local");
+	Click(kNetMode);
+	Run(500);
+	Shot("12c_asks_every_time");
+	Click(kStayLocal);
+	Run(400);
+	Click(kTab1);
+	GoTo("www.eyefinder.info/tests.html", 3000);
+	Shot("12d_local_page_network_blocked");
 
 	// Minimizar y restaurar conservan las pestañas.
 	Click(kMinimize);

@@ -72,6 +72,10 @@ Non-obvious behavior:
 - **Site game API:** every local site gets `/_game/sa.js` and `POST /_game/script/<name>`, which runs `sites/<domain>/scripts/<name>.efs`. Those are compiled CLEO scripts with a different extension, because modloader starts every `.cs` file in a mod folder at game start. It's limited to simple names in the site's own folder and needs the `X-EyeFinder` header. Real sites can't reach it, and `tests.html` checks this with a real cross-origin request.
 - **Notifications:** `PagerRenderer` is game-free and drawn after the browser, so it shows over it. The help box text goes through `CHud::SetHelpMessage`, which silently refuses at times, so `MailSystem` retries until the text appears in `CHud::m_pHelpMessage`. Don't use `HelpMessageDisplayed()` to confirm it, because it stays false until the box is drawn, which once made the message repeat forever.
 
+## Local mode
+
+The browser starts in local mode, and the real internet is only enabled by the shell's `setInternet` command, after its confirmation dialog. Keep the dialog on every switch. There are two layers. `IsAllowedUrl` in the helper applies to navigation, popups and every resource through `OnBeforeResourceLoad`, and non-network schemes such as `data:` and `blob:` pass. `ApplyNetworkPolicy` also points Chromium's proxy preference at a dead address, because WebSockets skip `OnBeforeResourceLoad`, and WebRTC is limited to proxied traffic. Local sites use scheme handlers, not the network, so they keep working. The dialog hides the active tab through the layout message, because tabs are composited over the shell. `tests.html` reports whether its own fetch, WebSocket and WebRTC reach the internet, so check it in both modes after changing this.
+
 ## Before this ships with real internet access
 
 - Chromium's sandbox is off (`USE_SANDBOX OFF`, `no_sandbox = true`).

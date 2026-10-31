@@ -12,7 +12,9 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <cctype>
 #include <map>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -21,8 +23,11 @@
 #include "include/cef_app.h"
 #include "include/cef_client.h"
 #include "include/cef_command_line.h"
+#include "include/base/cef_logging.h"
 #include "include/cef_parser.h"
+#include "include/cef_request_context.h"
 #include "include/cef_scheme.h"
+#include "include/cef_resource_request_handler.h"
 #include "include/wrapper/cef_byte_read_handler.h"
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_message_router.h"
@@ -37,6 +42,29 @@ std::string gShellUrl;
 std::wstring gMailPath;
 int gUnreadMail = 0;
 constexpr char kMailDomain[] = "mail.eyefinder.info";
+constexpr char kHomeUrl[] = "https://www.eyefinder.info/";
+
+// El navegador arranca solo con los sitios locales. El internet real solo se activa desde la interfaz,
+// y esta pide confirmación cada vez. Se consulta desde varios hilos.
+std::atomic<bool> gInternetEnabled{ false };
+std::set<std::string> gLocalDomains;  // Solo se escribe al arrancar, antes de crear navegadores.
+
+bool IsAllowedUrl(const std::string& url) {
+	if (gInternetEnabled.load(std::memory_order_relaxed)) return true;
+
+	CefURLParts parts;
+	if (!CefParseURL(url, parts)) return false;
+
+	std::string scheme = CefString(&parts.scheme).ToString();
+	for (char& c : scheme) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+	// data:, blob: y about: no salen a la red.
+	if (scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss" && scheme != "ftp") return true;
+
+	std::string host = CefString(&parts.host).ToString();
+	for (char& c : host) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+	return gLocalDomains.count(host) != 0;
+}
 ef::Header* gHeader = nullptr;
 HANDLE gShellReady = nullptr;
 HANDLE gAllClosed = nullptr;
@@ -62,6 +90,7 @@ void ComposeAndPublish();
 void SetKeyboardTarget(View* view);
 void PublishCursor();
 void CallShell(const std::string& function, CefRefPtr<CefValue> argument);
+void AskForInternet(const std::string& url, bool newTab);
 
 CefRefPtr<CefValue> StringValue(const std::string& text) {
 	CefRefPtr<CefValue> value = CefValue::Create();
@@ -233,6 +262,7 @@ class View : public CefClient,
              public CefDisplayHandler,
              public CefLoadHandler,
              public CefRequestHandler,
+             public CefResourceRequestHandler,
              public CefContextMenuHandler,
              public CefJSDialogHandler {
 public:
@@ -338,12 +368,16 @@ public:
 	bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString& targetUrl, const CefString&,
 		CefLifeSpanHandler::WindowOpenDisposition, bool, const CefPopupFeatures&, CefWindowInfo&, CefRefPtr<CefClient>&, CefBrowserSettings&,
 		CefRefPtr<CefDictionaryValue>&, bool*) override {
-		if (!IsShell() && !targetUrl.empty()) CallShell("openTab", StringValue(targetUrl.ToString()));
+		if (!IsShell() && !targetUrl.empty()) {
+			const std::string url = targetUrl.ToString();
+			if (IsAllowedUrl(url)) CallShell("openTab", StringValue(url));
+			else AskForInternet(url, true);
+		}
 		return true;
 	}
 
 	// --- Navegación ---
-	bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool, bool) override {
+	bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool userGesture, bool) override {
 		const std::string url = request->GetURL().ToString();
 
 		if (IsShell()) {
@@ -354,7 +388,23 @@ public:
 		}
 
 		// Sin sandbox, una página no debe poder abrir archivos del disco.
-		return url.rfind("file:", 0) == 0;
+		if (url.rfind("file:", 0) == 0) return true;
+
+		if (!IsAllowedUrl(url)) {
+			// Solo se pregunta si lo ha pedido el jugador: una página no puede insistir sola.
+			if (frame->IsMain() && userGesture) AskForInternet(url, false);
+			return true;
+		}
+		return false;
+	}
+
+	CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest>, bool, bool, const CefString&, bool&) override {
+		return IsShell() ? nullptr : this;
+	}
+
+	// Cada recurso, no solo las páginas: un sitio local no debe poder cargar nada de internet.
+	CefResourceRequestHandler::ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, CefRefPtr<CefCallback>) override {
+		return IsAllowedUrl(request->GetURL().ToString()) ? RV_CONTINUE : RV_CANCEL;
 	}
 
 	void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus, int, const CefString&) override {
@@ -487,6 +537,46 @@ void CallShell(const std::string& function, CefRefPtr<CefValue> argument) {
 	if (!gShell || !gShell->Browser()) return;
 	const std::string json = CefWriteJSON(argument, JSON_WRITER_DEFAULT).ToString();
 	gShell->Browser()->GetMainFrame()->ExecuteJavaScript("ef." + function + "(" + json + ")", gShellUrl, 0);
+}
+
+// La segunda barrera, a nivel de red: en modo local, todo sale por un proxy que no existe. Hace falta
+// porque los WebSockets no pasan por OnBeforeResourceLoad. Los sitios locales no usan la red, así que
+// siguen funcionando. <-loopback> incluye también a localhost, que Chromium excluye de los proxies.
+void ApplyNetworkPolicy(bool internet) {
+	CefRefPtr<CefDictionaryValue> proxy = CefDictionaryValue::Create();
+	if (internet) {
+		proxy->SetString("mode", "direct");
+	}
+	else {
+		proxy->SetString("mode", "fixed_servers");
+		proxy->SetString("server", "127.0.0.1:1");
+		proxy->SetString("bypass_list", "<-loopback>");
+	}
+
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(proxy);
+
+	CefString error;
+	CefRefPtr<CefRequestContext> context = CefRequestContext::GetGlobalContext();
+	if (!context->SetPreference("proxy", value, error)) {
+		LOG(ERROR) << "Could not set the network policy: " << error.ToString();
+	}
+
+	// WebRTC puede enviar UDP saltandose el proxy, y con el revelar la IP real de quien juega.
+	CefRefPtr<CefValue> webrtc = CefValue::Create();
+	webrtc->SetString(internet ? "default_public_interface_only" : "disable_non_proxied_udp");
+	if (!context->SetPreference("webrtc.ip_handling_policy", webrtc, error)) {
+		LOG(ERROR) << "Could not set the WebRTC policy: " << error.ToString();
+	}
+}
+
+void AskForInternet(const std::string& url, bool newTab) {
+	CefRefPtr<CefDictionaryValue> details = CefDictionaryValue::Create();
+	details->SetString("url", url);
+	details->SetBool("newTab", newTab);
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(details);
+	CallShell("onBlocked", value);
 }
 
 View* ActiveTabView() {
@@ -624,8 +714,12 @@ bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 		ActivateTab(message->GetInt("id"));
 	}
 	else if (command == "navigate") {
-		if (page) {
-			page->GetMainFrame()->LoadURL(message->GetString("url"));
+		const std::string url = message->GetString("url").ToString();
+		if (!IsAllowedUrl(url)) {
+			AskForInternet(url, false);
+		}
+		else if (page) {
+			page->GetMainFrame()->LoadURL(url);
 			SetKeyboardTarget(active);
 		}
 	}
@@ -640,6 +734,21 @@ bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 	}
 	else if (command == "stop") {
 		if (page) page->StopLoad();
+	}
+	else if (command == "setInternet") {
+		const bool enabled = message->GetBool("enabled");
+		gInternetEnabled.store(enabled, std::memory_order_relaxed);
+		ApplyNetworkPolicy(enabled);
+
+		// Al volver a local, ninguna pestaña se queda en una web real ni con una conexión abierta.
+		if (!enabled) {
+			for (auto& [id, tab] : gTabs) {
+				CefRefPtr<CefBrowser> tabBrowser = tab->Browser();
+				if (!tabBrowser) continue;
+				if (IsAllowedUrl(tabBrowser->GetMainFrame()->GetURL().ToString())) tabBrowser->Reload();
+				else tabBrowser->GetMainFrame()->LoadURL(kHomeUrl);
+			}
+		}
 	}
 	else if (command == "logOff") {
 		gHeader->closeRequest.store(1, std::memory_order_release);
@@ -679,6 +788,7 @@ public:
 
 	void OnContextInitialized() override {
 		RegisterSites();
+		ApplyNetworkPolicy(false);
 		CreateShell();
 	}
 
@@ -710,6 +820,9 @@ private:
 		for (const auto& entry : fs::directory_iterator(sites, error)) {
 			if (!entry.is_directory()) continue;
 			const CefString domain = entry.path().filename().wstring();
+			std::string lowered = domain.ToString();
+			for (char& c : lowered) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+			gLocalDomains.insert(lowered);
 			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), domain.ToString() == kMailDomain);
 			CefRegisterSchemeHandlerFactory("https", domain, factory);
 			CefRegisterSchemeHandlerFactory("http", domain, factory);

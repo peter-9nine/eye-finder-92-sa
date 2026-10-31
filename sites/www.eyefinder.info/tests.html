@@ -24,6 +24,7 @@
        <span id="picked">Los Santos</span></p>
     <p><button id="runCleo">Run CLEO script</button> <span id="cleoResult"></span></p>
     <p>Reading the inbox from another site: <span id="crossSite">checking</span></p>
+    <p>Real internet from this page: fetch <span id="netFetch">checking</span>, WebSocket <span id="netSocket">checking</span>, WebRTC <span id="netRtc">checking</span></p>
   </section>
   <section>
     <h2>Animation test</h2>
@@ -47,6 +48,28 @@ let clicks = 0;
   fetch('https://mail.eyefinder.info/api/inbox', { headers: { 'X-EyeFinder': '1' } })
     .then(() => { byId('crossSite').textContent = 'ALLOWED (BAD)'; })
     .catch(() => { byId('crossSite').textContent = 'blocked'; });
+
+  // Mide si esta página llega de verdad a internet: en modo local, ambos deben salir "blocked".
+  fetch('https://example.com/', { mode: 'no-cors', cache: 'no-store' })
+    .then(() => { byId('netFetch').textContent = 'reached'; })
+    .catch(() => { byId('netFetch').textContent = 'blocked'; });
+  try {
+    const socket = new WebSocket('wss://ws.postman-echo.com/raw');
+    socket.onopen = () => { byId('netSocket').textContent = 'reached'; socket.close(); };
+    socket.onerror = () => { byId('netSocket').textContent = 'blocked'; };
+  }
+  catch (error) {
+    byId('netSocket').textContent = 'blocked';
+  }
+
+  // WebRTC llega a internet si un servidor STUN le devuelve su dirección pública (srflx).
+  const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  peer.createDataChannel('test');
+  byId('netRtc').textContent = 'blocked';
+  peer.onicecandidate = (event) => {
+    if (event.candidate && event.candidate.candidate.includes(' srflx ')) byId('netRtc').textContent = 'reached';
+  };
+  peer.createOffer().then((offer) => peer.setLocalDescription(offer));
 
   byId('dropdown').onchange = (e) => { byId('picked').textContent = e.target.value; };
 

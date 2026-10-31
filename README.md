@@ -4,7 +4,7 @@ A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https:
 
 **Status: prototype.** It has a 1992-style desktop, a web browser with tabs that reaches both the real internet and sites stored with the mod, and an email inbox that other mods can write to.
 
-> **Don't use this prototype for browsing you care about.** Chromium's sandbox is off, and the browser has real internet access. Avoid untrusted sites and don't log in to your accounts.
+> **Local sites only by default.** The browser starts with only the sites stored with the mod. The **LOCAL** button in the toolbar connects to the real internet, after a confirmation every time. Chromium's sandbox is off in this prototype, so when connected, avoid untrusted sites and don't log in to your accounts.
 
 ## Using it
 
