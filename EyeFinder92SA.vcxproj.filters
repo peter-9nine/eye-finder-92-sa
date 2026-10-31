@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{5FAE7324-27E6-4DFE-8B93-66A3466ECF14}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{52F90278-6D4F-4D32-B0B1-E22624685FB7}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;inl</Extensions>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{B6CBC007-59B8-40B3-822B-BF3FFBB1F67A}</UniqueIdentifier>
+      <Extensions>hlsl;hlsli</Extensions>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{9C702E57-0795-4E42-A2A4-67CCADFB0A6F}</UniqueIdentifier>
+      <Extensions>rc;ico;png;jpg</Extensions>
+    </Filter>
+    <Filter Include="Vendors">
+      <UniqueIdentifier>{DB84F66F-2D89-43E3-BB3E-90D0BC508DAB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Vendors\imgui">
+      <UniqueIdentifier>{2B7D6480-B1CA-4F5E-BFAD-3A0897402E29}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Vendors\imgui\backends">
+      <UniqueIdentifier>{D525665A-B336-4DCE-8D5B-6C411D12A415}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="source\Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui.cpp">
+      <Filter>Vendors\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_demo.cpp">
+      <Filter>Vendors\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_draw.cpp">
+      <Filter>Vendors\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_tables.cpp">
+      <Filter>Vendors\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_widgets.cpp">
+      <Filter>Vendors\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\backends\imgui_impl_dx9.cpp">
+      <Filter>Vendors\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>Vendors\imgui\backends</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Resources</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resource.rc">
+      <Filter>Resources</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+</Project>

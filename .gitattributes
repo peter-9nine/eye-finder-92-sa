@@ -1,0 +1,11 @@
+* text=auto
+
+*.sln       text eol=crlf
+*.vcxproj   text eol=crlf
+*.filters   text eol=crlf
+*.rc        binary
+*.chm       binary
+*.png       binary
+*.jpg       binary
+*.ico       binary
+*.webp      binary

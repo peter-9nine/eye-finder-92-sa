@@ -1,0 +1,34 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.aps
+*.VC.db
+*.VC.opendb
+ipch/
+
+# Build output
+bin/
+obj/
+*.asi
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.iobj
+*.ipdb
+*.obj
+*.tlog
+*.log
+
+# Editor temp files
+*.TMP
+*~RF*.TMP
+*.bak
+*.swp
+
+# Libraries are taken from plugin-sdk (see README)
+lib/*.lib
+
+# Shader bytecode headers produced by FxCompile (built into $(IntDir)generated)
+generated/

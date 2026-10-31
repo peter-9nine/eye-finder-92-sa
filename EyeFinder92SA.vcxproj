@@ -1,0 +1,167 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release GTASA|Win32">
+      <Configuration>Release GTASA</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug GTASA|Win32">
+      <Configuration>Debug GTASA</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{F62A9222-B5A9-4984-9E9F-E756F0AA57F1}</ProjectGuid>
+    <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>EyeFinder92SA</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release GTASA|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug GTASA|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release GTASA|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug GTASA|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros">
+    <MYPLUGIN_SHARED>$(PLUGIN_SDK_DIR)\tools\myplugin-gen\generated\shared</MYPLUGIN_SHARED>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release GTASA|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+    <OutDir>$(ProjectDir)bin\GTASA\Release\</OutDir>
+    <IntDir>$(ProjectDir)obj\GTASA\Release\</IntDir>
+    <TargetName>EyeFinder92SA_SA</TargetName>
+    <TargetExt>.asi</TargetExt>
+    <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(IncludePath)</IncludePath>
+    <LibraryPath>$(PLUGIN_SDK_DIR)\shared\dxsdk;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug GTASA|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+    <OutDir>$(ProjectDir)bin\GTASA\Debug\</OutDir>
+    <IntDir>$(ProjectDir)obj\GTASA\Debug\</IntDir>
+    <TargetName>EyeFinder92SA_SA</TargetName>
+    <TargetExt>.asi</TargetExt>
+    <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(IncludePath)</IncludePath>
+    <LibraryPath>$(PLUGIN_SDK_DIR)\shared\dxsdk;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release GTASA|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>_CRT_NON_CONFORMING_SWPRINTFS;GTASA;GTAGAME_NAME="San Andreas";GTAGAME_ABBR="SA";GTAGAME_ABBRLOW="sa";GTAGAME_PROTAGONISTNAME="CJ";GTAGAME_CITYNAME="San Andreas";PLUGIN_SGV_10US;RW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(MYPLUGIN_SHARED)\imgui;$(MYPLUGIN_SHARED)\imgui\backends;$(MYPLUGIN_SHARED)\nlohmann;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <MinimalRebuild>false</MinimalRebuild>
+      <StringPooling>true</StringPooling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/sdl- %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <ExternalWarningLevel>Level3</ExternalWarningLevel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <AdditionalDependencies>plugin.lib;d3dx9.lib;CLEO.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)\lib;$(PLUGIN_SDK_DIR)\output\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <ProgramDatabaseFile>$(OutDir)$(TargetName).pdb</ProgramDatabaseFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if defined GTA_SA_DIR (
+taskkill /IM gta_sa.exe /F /FI "STATUS eq RUNNING"
+if not exist "$(GTA_SA_DIR)\modloader\$(TargetName)\" mkdir "$(GTA_SA_DIR)\modloader\$(TargetName)"
+xcopy /Y "$(TargetPath)" "$(GTA_SA_DIR)\modloader\$(TargetName)\"
+if defined SIGN_PATH "$(SIGN_PATH)" sign /f "$(SIGN_CERT)" /p "$(SIGN_PASSWORD)" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "$(GTA_SA_DIR)\modloader\$(TargetName)\$(TargetFileName)"
+)</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug GTASA|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>_CRT_NON_CONFORMING_SWPRINTFS;GTASA;GTAGAME_NAME="San Andreas";GTAGAME_ABBR="SA";GTAGAME_ABBRLOW="sa";GTAGAME_PROTAGONISTNAME="CJ";GTAGAME_CITYNAME="San Andreas";PLUGIN_SGV_10US;RW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(MYPLUGIN_SHARED)\imgui;$(MYPLUGIN_SHARED)\imgui\backends;$(MYPLUGIN_SHARED)\nlohmann;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <Optimization>Disabled</Optimization>
+      <MinimalRebuild>false</MinimalRebuild>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/sdl- %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <ExternalWarningLevel>Level3</ExternalWarningLevel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>plugin_d.lib;d3dx9.lib;CLEO.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)\lib;$(PLUGIN_SDK_DIR)\output\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>if defined GTA_SA_DIR (
+taskkill /IM gta_sa.exe /F /FI "STATUS eq RUNNING"
+if not exist "$(GTA_SA_DIR)\modloader\$(TargetName)\" mkdir "$(GTA_SA_DIR)\modloader\$(TargetName)"
+xcopy /Y "$(TargetPath)" "$(GTA_SA_DIR)\modloader\$(TargetName)\"
+)</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- Defaults for any .hlsl added under shaders\: SM 3.0 pixel shader compiled to
+       $(IntDir)generated\<file>_ps_bytecode.h with variable g_<file>_ps_bytecode -->
+  <ItemDefinitionGroup>
+    <FxCompile>
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>3.0</ShaderModel>
+      <VariableName>g_%(Filename)_ps_bytecode</VariableName>
+      <HeaderFileOutput>$(IntDir)generated\%(Filename)_ps_bytecode.h</HeaderFileOutput>
+      <ObjectFileOutput>
+      </ObjectFileOutput>
+    </FxCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="source\Main.cpp" />
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui.cpp" />
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_demo.cpp" />
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_draw.cpp" />
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_tables.cpp" />
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\backends\imgui_impl_dx9.cpp" />
+    <ClCompile Include="$(MYPLUGIN_SHARED)\imgui\backends\imgui_impl_win32.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\pch.h" />
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resource.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <Target Name="CreateShaderOutputDir" BeforeTargets="FxCompile">
+    <MakeDir Directories="$(IntDir)generated" />
+  </Target>
+</Project>
