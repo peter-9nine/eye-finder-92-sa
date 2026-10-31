@@ -10,12 +10,16 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
 
 #include "BrowserClient.h"
+#include "EyeFinderApi.h"
+#include "MailStore.h"
 #include "OverlayRenderer.h"
+#include "PagerRenderer.h"
 
 namespace {
 
@@ -33,6 +37,11 @@ constexpr POINT kTab2 = { 430, 87 };
 constexpr POINT kNewTabWithOneTab = { 373, 87 };
 constexpr POINT kMinimize = { 1056, 15 };
 constexpr POINT kRestore = { 60, 680 };
+constexpr POINT kMailButton = { 346, 51 };
+
+// mail.eyefinder.info
+constexpr POINT kFirstMailRow = { 500, 187 };
+constexpr POINT kDeleteMail = { 1058, 391 };
 
 // tests.html, a partir de la esquina del hueco de contenido
 constexpr POINT kClickMe = { 258, 204 };
@@ -54,6 +63,9 @@ struct Stats {
 
 BrowserClient gClient;
 OverlayRenderer gRenderer;
+PagerRenderer gPager;
+MailStore gStore;
+DWORD gLastFrame = 0;
 IDirect3DDevice9* gDevice = nullptr;
 Stats gStats;
 std::string gOutput;
@@ -83,6 +95,10 @@ void RenderFrame() {
 	gDevice->Clear(0, nullptr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(255, 0, 255), 1.0f, 0);
 	gDevice->BeginScene();
 	gRenderer.Draw(gDevice, float(gWidth), float(gHeight), gCursorX, gCursorY, gClient.Cursor());
+	const DWORD now = GetTickCount();
+	gPager.Advance(gLastFrame ? now - gLastFrame : 0);
+	gLastFrame = now;
+	gPager.Draw(gDevice, float(gWidth), float(gHeight));
 	gDevice->EndScene();
 	gDevice->Present(nullptr, nullptr, nullptr, nullptr);
 	++gStats.draws;
@@ -162,6 +178,104 @@ void GoTo(const char* address, int wait) {
 	Run(wait);
 }
 
+void Expect(const char* what, bool ok) {
+	if (!ok) {
+		printf("FAIL: %s\n", what);
+		++gFailures;
+	}
+}
+
+// Lo que el plugin hace en cada fotograma con las operaciones de la bandeja.
+void SyncMail() {
+	ef::MailOp operation;
+	bool changed = false;
+	while (gClient.TakeMailOp(operation)) {
+		changed = true;
+		if (operation.kind == ef::MailOpKind::MarkRead) gStore.MarkRead(operation.id);
+		else gStore.Remove(operation.id);
+	}
+	if (changed) gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
+	gStore.FlushSession();
+}
+
+void RunWithMail(int milliseconds) {
+	const DWORD start = GetTickCount();
+	while (GetTickCount() - start < DWORD(milliseconds)) {
+		Run(50);
+		SyncMail();
+	}
+}
+
+void TestApi() {
+	// Con el nombre real, como lo encuentra otro mod.
+	Expect("API: not installed before loading", !eyefinder::IsInstalled() && eyefinder::SendEmail("a", "b", "c") == 0);
+
+	HMODULE module = LoadLibraryW(L"EyeFinder92SA.asi");
+	Expect("API: load the module", module != nullptr);
+	if (!module) return;
+
+	using Pending = int(__cdecl*)();
+	using LastEquals = int(__cdecl*)(const char*, const char*, const char*, int);
+	const auto pending = reinterpret_cast<Pending>(GetProcAddress(module, "EF_Test_PendingCount"));
+	const auto lastEquals = reinterpret_cast<LastEquals>(GetProcAddress(module, "EF_Test_LastEquals"));
+
+	Expect("API: version", eyefinder::GetApiVersion() == EF_API_VERSION);
+	Expect("API: send email", eyefinder::SendEmail("Sweet", "Hi", "Grove Street", EF_NOTIFY_PAGER) == 1);
+	Expect("API: email arrived intact", lastEquals("Sweet", "Hi", "Grove Street", EF_NOTIFY_PAGER) == 1);
+	Expect("API: null fields are accepted", eyefinder::SendEmail(nullptr, nullptr, "body only") == 1);
+	Expect("API: empty email refused", eyefinder::SendEmail(nullptr, nullptr, nullptr) == 0);
+	Expect("API: notify", eyefinder::Notify("Text") == 1);
+	Expect("API: empty notify refused", eyefinder::Notify(nullptr) == 0);
+	Expect("API: page", eyefinder::Page("Cesar", "Text") == 1);
+	Expect("API: queue count", pending() == 4);
+	Expect("API: unread count", eyefinder::GetUnreadCount() == 0);
+
+	// Una cola llena rechaza, en lugar de crecer sin fin.
+	for (int i = 0; i < 400; ++i) eyefinder::Notify("flood");
+	Expect("API: queue is limited", pending() == 256);
+	Expect("API: refuses when full", eyefinder::Notify("flood") == 0);
+
+	FreeLibrary(module);
+}
+
+void TestMailFiles() {
+	const std::filesystem::path folder = std::filesystem::path(gOutput) / L"save data";
+	MailStore store;
+	store.Add("From \xC3\xB1", "Subject \"quoted\"", "Body\nwith lines", "Day 1, 10:00");
+	store.Add("Bad UTF-8 \xFF", "Subject", "Body", "Day 2, 11:00");
+	store.MarkRead(1);
+	Expect("files: save", store.SaveTo(folder / L"GTASAsf1.json"));
+
+	// Una partida distinta no toca la otra.
+	MailStore other;
+	other.Add("Other", "Other", "Other", "Day 9, 09:00");
+	Expect("files: save second slot", other.SaveTo(folder / L"GTASAsf2.json"));
+
+	MailStore loaded;
+	Expect("files: load", loaded.LoadFrom(folder / L"GTASAsf1.json"));
+	Expect("files: mails kept", loaded.Mails().size() == 2 && loaded.UnreadCount() == 1);
+	Expect("files: text kept", loaded.Mails()[0].from == "From \xC3\xB1" && loaded.Mails()[0].body == "Body\nwith lines");
+	Expect("files: new ids don't collide", loaded.Add("x", "x", "x", "x") == 3);
+
+	MailStore second;
+	Expect("files: load second slot", second.LoadFrom(folder / L"GTASAsf2.json") && second.Mails().size() == 1 && second.Mails()[0].from == "Other");
+
+	MailStore missing;
+	Expect("files: a save without mod data is fine", !missing.LoadFrom(folder / L"GTASAsf8.json") && missing.Mails().empty());
+
+	{
+		std::ofstream damaged(folder / L"GTASAsf3.json", std::ios::binary);
+		damaged << "{ not json";
+	}
+	MailStore bad;
+	Expect("files: damaged file refused", !bad.LoadFrom(folder / L"GTASAsf3.json") && bad.Mails().empty());
+	Expect("files: damaged file set aside", std::filesystem::exists(folder / L"GTASAsf3.json.damaged"));
+
+	Expect("text: accents", ToPlainAscii("Ca\xC3\xB1on \xC3\xA1\xC3\xA9\xC3\xAD") == "Canon aei");
+	Expect("text: game codes removed", ToPlainAscii("~r~red") == "rred");
+	Expect("text: other characters", ToPlainAscii("\xE2\x82\xAC" "5") == "?5");
+}
+
 void Measure(const char* name, int milliseconds, bool scroll) {
 	gStats = {};
 	const uint32_t paints = gClient.PaintCount();
@@ -225,11 +339,19 @@ int wmain(int argc, wchar_t** argv) {
 
 	std::string error;
 	const DWORD launch = GetTickCount();
-	if (!gClient.Start(helper, url, gWidth, gHeight, error)) {
+	gStore.SetSessionPath(std::filesystem::path(argv[3]) / L"session.json");
+	gStore.Add("EyeFinder Staff", "Welcome to EyeMail", "Welcome!\n\nVisit https://www.eyefinder.info/ for more.", "Day 1, 08:00");
+	gStore.Add("Sweet", "Get back to Grove Street", "Yo CJ, we need you back here.", "Day 2, 19:30");
+	gStore.Add("<b>Script Kiddie</b>", "<img src=x onerror=alert(1)>", "<script>document.title='hacked'</script> Plain text only.", "Day 3, 02:15");
+	gStore.FlushSession();
+
+	const std::wstring mailPath = std::wstring(argv[3]) + L"\\session.json";
+	if (!gClient.Start(helper, url, mailPath, gWidth, gHeight, error)) {
 		printf("FAIL: %s\n", error.c_str());
 		return 1;
 	}
 	gClient.Send({ ef::EventType::Show });
+	gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
 
 	while (!gRenderer.HasFrame()) {
 		if (gClient.HasExited()) {
@@ -317,6 +439,39 @@ int wmain(int argc, wchar_t** argv) {
 	Shot("14_restored");
 	ExpectPixel("restored window", { 600, 15 }, kTitleBarColor);
 
+	// Correo: abrir, leer, borrar y recibir uno nuevo con la página abierta.
+	Click(kMailButton);
+	RunWithMail(1800);
+	Shot("15_mail_list");
+	Click(kFirstMailRow);
+	RunWithMail(800);
+	Shot("16_mail_read");
+	Expect("mail: reading marks as read", gStore.UnreadCount() == 2);
+	Click(kDeleteMail);
+	RunWithMail(800);
+	Expect("mail: delete", gStore.Mails().size() == 2);
+	gStore.Add("Big Smoke", "Dinner", "Two number 9s.", "Day 4, 12:00");
+	gStore.FlushSession();
+	gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
+	RunWithMail(2200);
+	Shot("17_mail_new_arrived");
+
+	// El busca, sobre la página. Tiene que acabar solo.
+	gPager.Show("Big Smoke", "I'll have two number 9s, a number 9 large, a number 6 with extra dip, a number 7, two number 45s");
+	PagerRenderer::PlayBeep();
+	Run(1600);
+	Shot("18_pager");
+	Run(2800);
+	Shot("19_pager_next_page");
+	const DWORD pagerStart = GetTickCount();
+	while (gPager.IsBusy() && GetTickCount() - pagerStart < 30000) Run(100);
+	Expect("pager: finishes by itself", !gPager.IsBusy());
+
+	gPager.Show("", "Ca\xC3\xB1on");
+	Run(1600);
+	Shot("20_pager_no_sender");
+	while (gPager.IsBusy() && GetTickCount() - pagerStart < 60000) Run(100);
+
 	// Ocultar y mostrar (menú de pausa, F8) producen un fotograma nuevo.
 	gClient.Send({ ef::EventType::Hide });
 	Run(300);
@@ -343,6 +498,9 @@ int wmain(int argc, wchar_t** argv) {
 		puts("FAIL: Log Off did not request a close");
 		++gFailures;
 	}
+
+	TestMailFiles();
+	TestApi();
 
 	const DWORD stopStart = GetTickCount();
 	gClient.Stop();

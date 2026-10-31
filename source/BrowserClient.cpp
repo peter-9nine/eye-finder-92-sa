@@ -10,7 +10,7 @@ std::string LastError(const char* what) {
 
 }  // namespace
 
-bool BrowserClient::Start(const std::wstring& helperPath, const std::wstring& url, uint32_t width, uint32_t height, std::string& error) {
+bool BrowserClient::Start(const std::wstring& helperPath, const std::wstring& url, const std::wstring& mailPath, uint32_t width, uint32_t height, std::string& error) {
 	Stop();
 
 	const uint32_t stride = width * 4;
@@ -56,7 +56,7 @@ bool BrowserClient::Start(const std::wstring& helperPath, const std::wstring& ur
 	SetInformationJobObject(job_, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
 
 	std::wstring command = L"\"" + helperPath + L"\" --ef-shm=" + base + L" --ef-parent=" +
-		std::to_wstring(GetCurrentProcessId()) + L" --ef-url=\"" + url + L"\"";
+		std::to_wstring(GetCurrentProcessId()) + L" --ef-url=\"" + url + L"\" --ef-mail=\"" + mailPath + L"\"";
 
 	std::wstring directory = helperPath.substr(0, helperPath.find_last_of(L"\\/"));
 
@@ -131,6 +131,17 @@ const uint8_t* BrowserClient::AcquireFrame() {
 
 ef::CursorKind BrowserClient::Cursor() const {
 	return header_ ? static_cast<ef::CursorKind>(header_->cursor.load(std::memory_order_relaxed)) : ef::CursorKind::Arrow;
+}
+
+bool BrowserClient::TakeMailOp(ef::MailOp& operation) {
+	if (!header_) return false;
+
+	const uint32_t read = header_->mailOpRead.load(std::memory_order_relaxed);
+	if (read == header_->mailOpWrite.load(std::memory_order_acquire)) return false;
+
+	operation = header_->mailOps[read % ef::kMailOpRingSize];
+	header_->mailOpRead.store(read + 1, std::memory_order_release);
+	return true;
 }
 
 bool BrowserClient::TakeCloseRequest() {

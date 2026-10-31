@@ -24,6 +24,14 @@
   #iconInternet { left: 29.5%; top: 37.8%; width: 8.9%; height: 18.7%; }
   #iconLogOff { left: 60.8%; top: 64%; width: 8.3%; height: 18.6%; }
 
+  #iconMail { position: absolute; left: 2.2%; top: 23%; width: 8%; padding: 0; background: none; border: 0; outline: 0; color: #fff; font: 2.7vh Georgia, "Bookman Old Style", serif; text-align: center; cursor: pointer; }
+  #iconMail:hover, #iconMail:focus-visible { outline: 2px dotted #fff; outline-offset: 2px; }
+  #iconMail svg { display: block; width: 58%; margin: 0 auto 2px; shape-rendering: crispEdges; }
+  .badge { display: none; min-width: 1.5em; padding: 0 4px; background: #d00000; border: 1px solid #fff; color: #fff; font: bold 12px Tahoma, sans-serif; line-height: 16px; text-align: center; }
+  #iconMail .badge { position: absolute; top: 0; right: 16%; font-size: 2vh; line-height: 2.8vh; }
+  #mail { position: relative; }
+  #mail .badge { position: absolute; top: -5px; right: -5px; }
+
   #hopesNote { position: absolute; left: 1.6%; top: 19.5%; padding: 4px 8px; background: #ffffcc; border: 1px solid #000; font-size: 13px; display: none; }
 
   /* Ventana minimizada: un icono abajo, como en los escritorios de la época. */
@@ -63,6 +71,17 @@
   <button class="icon" id="iconHopes" title="My Hopes and Dreams"></button>
   <button class="icon" id="iconInternet" title="Internet"></button>
   <button class="icon" id="iconLogOff" title="Log Off"></button>
+  <button id="iconMail" title="Mail">
+    <svg viewBox="0 0 32 24" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="22" fill="#000"/>
+      <rect x="2" y="2" width="28" height="20" fill="#fff"/>
+      <rect x="2" y="2" width="28" height="2" fill="#ffffc8"/>
+      <path d="M3 4h2v1h2v1h2v1h2v1h2v1h2v1h2V9h2V8h2V7h2V6h2V5h2V4h2v2h-2v1h-2v1h-2v1h-2v1h-2v1h-2v1h-4v-1h-2v-1h-2V9H9V8H7V7H5V6H3z" fill="#000"/>
+      <path d="M3 19h2v-1h2v-1h2v-1h2v1H9v1H7v1H5v1H3zM29 19h-2v-1h-2v-1h-2v-1h-2v1h2v1h2v1h2v1h2z" fill="#808080"/>
+    </svg>
+    Mail
+    <span class="badge" id="desktopBadge"></span>
+  </button>
   <div id="hopesNote">This folder is empty.</div>
   <button id="minimized"><span class="globe">www</span>Web Browser</button>
 </div>
@@ -79,6 +98,7 @@
     <button class="bevel" id="forward" title="Forward (Alt+Right)" disabled>→</button>
     <button class="bevel" id="reload" title="Reload (F5)">↻</button>
     <button class="bevel" id="home" title="Home">⌂</button>
+    <button class="bevel" id="mail" title="Mail">✉<span class="badge" id="toolbarBadge"></span></button>
     <input id="address" spellcheck="false" autocomplete="off" aria-label="Address">
     <button class="bevel" id="go">Go</button>
   </div>
@@ -91,6 +111,7 @@
 
 <script>
   const HOME = 'https://www.eyefinder.info/';
+  const MAIL = 'https://mail.eyefinder.info/';
   const MAX_TABS = 8;
   const byId = (id) => document.getElementById(id);
 
@@ -159,6 +180,18 @@
 
   const displayUrl = (url) => (url || '').replace(/^data:.*/, '');
 
+  // El correo se abre una sola vez: si ya hay una pestaña, se vuelve a ella.
+  function openMail() {
+    const existing = tabs.find((tab) => (tab.url || '').startsWith(MAIL));
+    if (!existing) {
+      if (tabs.length < MAX_TABS) openTab(MAIL);
+      else { setWindowState('open'); send({ cmd: 'navigate', url: MAIL }); }
+      return;
+    }
+    activateTab(existing.id);
+    setWindowState('open');
+  }
+
   function openTab(url) {
     if (tabs.length >= MAX_TABS) return;
     const id = nextId++;
@@ -222,6 +255,12 @@
       if (tab) Object.assign(tab, state);
       render();
     },
+    onMail(unread) {
+      for (const badge of [byId('desktopBadge'), byId('toolbarBadge')]) {
+        badge.textContent = unread > 99 ? '99+' : unread;
+        badge.style.display = unread > 0 ? 'block' : 'none';
+      }
+    },
     onStatus(text) { byId('statusBar').textContent = text; },
     openTab,
     shortcut(action) {
@@ -239,6 +278,8 @@
     if (tabs.length) setWindowState('open');
     else openTab(HOME);
   };
+  byId('iconMail').onclick = openMail;
+  byId('mail').onclick = openMail;
   byId('iconLogOff').onclick = () => send({ cmd: 'logOff' });
   byId('iconHopes').onclick = () => {
     const note = byId('hopesNote');

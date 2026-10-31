@@ -8,10 +8,11 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 2;
+constexpr uint32_t kProtocol = 3;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
+constexpr uint32_t kMailOpRingSize = 64;
 constexpr uint32_t kHeaderSize = 64 * 1024;
 
 // Mismos valores que EVENTFLAG_* de CEF.
@@ -33,6 +34,7 @@ enum class EventType : uint32_t {
 	Show,
 	Hide,
 	Invalidate,  // pide repintar, por ejemplo tras perder el dispositivo D3D
+	MailChanged, // a = correos sin leer
 	Quit
 };
 
@@ -45,6 +47,15 @@ struct Event {
 	uint32_t modifiers;
 };
 static_assert(sizeof(Event) == 24);
+
+// Lo que hace el jugador en la bandeja. Los correos son del plugin: el helper solo los lee.
+enum class MailOpKind : uint32_t { MarkRead, Remove };
+
+struct MailOp {
+	MailOpKind kind;
+	uint32_t id;
+};
+static_assert(sizeof(MailOp) == 8);
 
 enum class HelperState : uint32_t { Starting, Ready, Failed };
 enum class CursorKind : uint32_t { Arrow, Hand, IBeam };
@@ -68,6 +79,11 @@ struct Header {
 	std::atomic<uint32_t> ringWrite;
 	std::atomic<uint32_t> ringRead;
 	Event ring[kRingSize];
+
+	// La misma idea en sentido contrario: un solo productor (helper) y un solo consumidor (plugin).
+	std::atomic<uint32_t> mailOpWrite;
+	std::atomic<uint32_t> mailOpRead;
+	MailOp mailOps[kMailOpRingSize];
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);
 static_assert(sizeof(Header) <= kHeaderSize);

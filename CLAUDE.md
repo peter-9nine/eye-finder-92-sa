@@ -25,7 +25,7 @@ $url = "file:///$root/helper/build/Release/ui/shell.html" -replace '\\','/'
 tools\harness\build\Release\EyeFinderHarness.exe "$root\helper\build\Release\EyeFinderBrowser.exe" $url <output folder>
 ```
 
-The harness drives the desktop, tabs, toolbar, dropdowns and Log Off, measures performance and writes raw BGRX captures at 1280x720. Its click coordinates and expected pixel colors match `ui/shell.html` and `sites/www.eyefinder.info/tests.html`, so update them if those layouts change. A passing run doesn't prove everything looks right, so inspect the captures. It can't test anything game-side, such as the pause menu or fades.
+The harness drives the desktop, tabs, toolbar, dropdowns and Log Off, measures performance and writes raw BGRX captures at 1280x720. Its click coordinates and expected pixel colors match `ui/shell.html` and `sites/www.eyefinder.info/tests.html`, so update them if those layouts change. A passing run doesn't prove everything looks right, so inspect the captures. It also tests the mail files, the pager and the API, using a stand-in module named `EyeFinder92SA.asi`. It can't test anything game-side, such as the pause menu, fades, the save hooks or the help box. `tools\deploy.ps1 -Demo` installs `examples/ApiDemo` for testing the API in-game.
 
 ## Architecture
 
@@ -59,6 +59,15 @@ Non-obvious behavior:
 - **Device loss:** the texture is in `D3DPOOL_DEFAULT`, so `OnDeviceLost` releases it and `OnDeviceReset` requests a new frame.
 - **Resolution changes:** the helper restarts if the game's size changed, which loses the open tabs.
 - **DXVK:** the developer's game runs through DXVK, so test Direct3D changes through it as well as native Direct3D.
+
+## Email and save data
+
+- **Public API:** `api/EyeFinderApi.h` documents it, and `source/Api.cpp` exports it from the plugin. It's a plain C interface that other mods depend on, so only add to it: never change or remove a function. The real exports must stay undecorated (check with `dumpbin /exports`).
+- **Threads:** API calls can come from any thread, so they only copy into a queue. `MailSystem::Update` drains it on the game thread.
+- **Ownership:** the plugin owns the inbox (`MailStore`) and writes `save data\current session.json` atomically. The helper only reads that file. Player actions travel back as `ef::MailOp` through a second shared memory ring, and the unread count as `EventType::MailChanged`.
+- **Mail site:** `sites/mail.eyefinder.info` reads `/api/inbox` and posts to `/api/read/<id>` and `/api/delete/<id>`. `SiteHandlerFactory` serves these only for that domain and requires an `X-EyeFinder` header, so that real sites can't reach them: a custom header forces a CORS preflight that's never granted. Mail text is always inserted as text, never HTML, because it comes from other mods.
+- **Save files:** hooks on `GenericSave` (`0x5D13E0`) and `GenericLoad` (`0x5D17B0`) copy between the session and `save data\<game save name>.json`, using `ms_SaveFileNameJustSaved` and `ms_LoadFileName`. `restartGameEvent` fires before `GenericLoad`, so it resets the inbox for both new games and loads, and a successful load then replaces it. Future mod data belongs in the same file, under its own top-level key.
+- **Notifications:** `PagerRenderer` is game-free and drawn after the browser, so it shows over it. The help box text goes through `CHud::SetHelpMessage`, which silently refuses at times, so `MailSystem` retries until `HelpMessageDisplayed()` is true.
 
 ## Before this ships with real internet access
 

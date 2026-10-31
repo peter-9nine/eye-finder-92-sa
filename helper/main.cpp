@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <map>
 #include <string>
 #include <thread>
@@ -21,6 +23,7 @@
 #include "include/cef_command_line.h"
 #include "include/cef_parser.h"
 #include "include/cef_scheme.h"
+#include "include/wrapper/cef_byte_read_handler.h"
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_message_router.h"
 #include "include/wrapper/cef_stream_resource_handler.h"
@@ -31,6 +34,9 @@ namespace {
 namespace fs = std::filesystem;
 
 std::string gShellUrl;
+std::wstring gMailPath;
+int gUnreadMail = 0;
+constexpr char kMailDomain[] = "mail.eyefinder.info";
 ef::Header* gHeader = nullptr;
 HANDLE gShellReady = nullptr;
 HANDLE gAllClosed = nullptr;
@@ -64,9 +70,64 @@ CefRefPtr<CefValue> StringValue(const std::string& text) {
 }
 
 // --- Sitios locales: sites/<dominio>/ se sirve como si fuera ese dominio ---
+class TextHolder : public CefBaseRefCounted {
+public:
+	explicit TextHolder(std::string text) : text(std::move(text)) {}
+	std::string text;
+
+	IMPLEMENT_REFCOUNTING(TextHolder);
+};
+
+CefRefPtr<CefResourceHandler> JsonResponse(int status, std::string text) {
+	CefRefPtr<TextHolder> holder = new TextHolder(std::move(text));
+	CefRefPtr<CefReadHandler> reader = new CefByteReadHandler(reinterpret_cast<const unsigned char*>(holder->text.data()), holder->text.size(), holder);
+
+	CefResponse::HeaderMap headers;
+	headers.insert({ "Cache-Control", "no-store" });
+	return new CefStreamResourceHandler(status, status == 200 ? "OK" : "Error", "application/json", headers, CefStreamReader::CreateForHandler(reader));
+}
+
+// La bandeja del correo, solo para su propio sitio. Las demás webs no pueden ni leerla ni tocarla:
+// la cabecera propia obliga al navegador a pedir permiso (CORS), y aquí nunca se concede.
+CefRefPtr<CefResourceHandler> HandleMailApi(const std::string& path, CefRefPtr<CefRequest> request) {
+	if (request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
+
+	if (path == "/api/inbox") {
+		std::ifstream file(fs::path(gMailPath), std::ios::binary);
+		if (!file.is_open()) return JsonResponse(503, "{}");
+		std::ostringstream contents;
+		contents << file.rdbuf();
+		return JsonResponse(200, contents.str());
+	}
+
+	if (request->GetMethod().ToString() != "POST") return JsonResponse(405, "{}");
+
+	ef::MailOpKind kind;
+	std::string idText;
+	if (path.rfind("/api/read/", 0) == 0) {
+		kind = ef::MailOpKind::MarkRead;
+		idText = path.substr(10);
+	}
+	else if (path.rfind("/api/delete/", 0) == 0) {
+		kind = ef::MailOpKind::Remove;
+		idText = path.substr(12);
+	}
+	else {
+		return JsonResponse(404, "{}");
+	}
+
+	if (idText.empty() || idText.size() > 9 || idText.find_first_not_of("0123456789") != std::string::npos) return JsonResponse(400, "{}");
+
+	const uint32_t write = gHeader->mailOpWrite.load(std::memory_order_relaxed);
+	if (write - gHeader->mailOpRead.load(std::memory_order_acquire) >= ef::kMailOpRingSize) return JsonResponse(503, "{}");
+	gHeader->mailOps[write % ef::kMailOpRingSize] = { kind, static_cast<uint32_t>(std::stoul(idText)) };
+	gHeader->mailOpWrite.store(write + 1, std::memory_order_release);
+	return JsonResponse(200, "{}");
+}
+
 class SiteHandlerFactory : public CefSchemeHandlerFactory {
 public:
-	explicit SiteHandlerFactory(fs::path root) : root_(std::move(root)) {}
+	SiteHandlerFactory(fs::path root, bool isMailSite) : root_(std::move(root)), isMailSite_(isMailSite) {}
 
 	CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString&, CefRefPtr<CefRequest> request) override {
 		CefURLParts parts;
@@ -74,6 +135,8 @@ public:
 
 		// Un sitio no puede salir de su carpeta.
 		const std::string escaped = CefString(&parts.path).ToString();
+		if (isMailSite_ && escaped.rfind("/api/", 0) == 0) return HandleMailApi(escaped, request);
+
 		const std::wstring decoded = CefURIDecode(escaped, true, UU_SPACES).ToWString();
 		fs::path relative = fs::path(decoded).relative_path().lexically_normal();
 		for (const auto& piece : relative) {
@@ -103,6 +166,7 @@ private:
 	}
 
 	fs::path root_;
+	const bool isMailSite_;
 
 	IMPLEMENT_REFCOUNTING(SiteHandlerFactory);
 };
@@ -282,6 +346,14 @@ public:
 		cursor_ = type == CT_HAND ? ef::CursorKind::Hand : type == CT_IBEAM ? ef::CursorKind::IBeam : ef::CursorKind::Arrow;
 		PublishCursor();
 		return true;
+	}
+
+	void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int) override {
+		if (IsShell() && frame->IsMain()) {
+			CefRefPtr<CefValue> value = CefValue::Create();
+			value->SetInt(gUnreadMail);
+			CallShell("onMail", value);
+		}
 	}
 
 	void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode code, const CefString& text, const CefString& url) override {
@@ -593,7 +665,7 @@ private:
 		for (const auto& entry : fs::directory_iterator(sites, error)) {
 			if (!entry.is_directory()) continue;
 			const CefString domain = entry.path().filename().wstring();
-			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path());
+			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), domain.ToString() == kMailDomain);
 			CefRegisterSchemeHandlerFactory("https", domain, factory);
 			CefRegisterSchemeHandlerFactory("http", domain, factory);
 		}
@@ -764,6 +836,14 @@ void HandleEvent(const ef::Event& event) {
 		ComposeAndPublish();
 		break;
 
+	case ef::EventType::MailChanged: {
+		gUnreadMail = event.a;
+		CefRefPtr<CefValue> value = CefValue::Create();
+		value->SetInt(gUnreadMail);
+		CallShell("onMail", value);
+		break;
+	}
+
 	case ef::EventType::Quit:
 		break;
 	}
@@ -835,6 +915,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 	const std::wstring section = commandLine->GetSwitchValue("ef-shm").ToWString();
 	const std::wstring parentId = commandLine->GetSwitchValue("ef-parent").ToWString();
 	gShellUrl = commandLine->GetSwitchValue("ef-url").ToString();
+	gMailPath = commandLine->GetSwitchValue("ef-mail").ToWString();
 	if (section.empty() || gShellUrl.empty()) return 2;
 
 	HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, section.c_str());

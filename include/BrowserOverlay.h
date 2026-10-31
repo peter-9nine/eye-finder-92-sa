@@ -18,6 +18,10 @@ public:
 
 	// El juego no debe recentrar el cursor mientras el navegador lo usa.
 	bool UsesCursor() const;
+	bool IsOpen() const { return phase_ != Phase::Closed; }
+
+	void SetUnreadMail(int unread);
+	bool TakeMailOp(ef::MailOp& operation) { return client_.TakeMailOp(operation); }
 
 private:
 	// Cerrado -> fundido a negro del juego -> abierto -> fundido a negro del navegador -> cerrado.
@@ -54,6 +58,7 @@ private:
 	int mouseY_ = 0;
 	bool haveMouse_ = false;
 	uint32_t buttons_ = 0;
+	int unreadMail_ = 0;
 
 	// Estadísticas del prototipo.
 	DWORD statsStart_ = 0;

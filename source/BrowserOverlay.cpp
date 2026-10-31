@@ -110,12 +110,13 @@ bool BrowserOverlay::EnsureHelper() {
 	std::string error;
 	const std::wstring helper = PluginDirectory() + L"\\browser\\EyeFinderBrowser.exe";
 	const std::wstring url = FileUrl(PluginDirectory() + L"\\browser\\ui\\shell.html");
-	if (!client_.Start(helper, url, width, height, error)) {
+	if (!client_.Start(helper, url, SessionSavePath(), width, height, error)) {
 		Log("Could not start the browser helper: " + error);
 		return false;
 	}
 
 	Log("Browser helper started at " + std::to_string(width) + "x" + std::to_string(height));
+	client_.Send({ ef::EventType::MailChanged, 0, 0, unreadMail_ });
 	return true;
 }
 
@@ -361,6 +362,11 @@ void BrowserOverlay::Restart() {
 	if (phase_ == Phase::Closed) return;
 	client_.Send({ ef::EventType::Hide });
 	ReleaseGame();
+}
+
+void BrowserOverlay::SetUnreadMail(int unread) {
+	unreadMail_ = unread;
+	if (client_.IsRunning()) client_.Send({ ef::EventType::MailChanged, 0, 0, unread });
 }
 
 void BrowserOverlay::OnDeviceLost() {

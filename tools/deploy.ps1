@@ -1,5 +1,5 @@
 # Copia el plugin y el helper a modloader. Se niega a hacerlo con el juego abierto.
-param([string]$Configuration = 'Release')
+param([string]$Configuration = 'Release', [switch]$Demo)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -16,6 +16,9 @@ Copy-Item "$root\bin\GTASA\$Configuration\EyeFinder92SA.asi" $target -Force
 # /MIR deja la carpeta igual que la compilación. Robocopy devuelve menos de 8 si todo ha ido bien.
 robocopy "$root\helper\build\Release" $browser /MIR /NFL /NDL /NJH /NJS /NP /XF '*.pdb' '*.lib' '*.exp' '*.ilk' | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+
+# El mod de ejemplo de la API solo se instala si se pide. -Demo:$false no lo quita.
+if ($Demo) { Copy-Item "$root\tools\harness\build\Release\EyeFinderApiDemo.asi" $target -Force }
 
 $size = (Get-ChildItem $target -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
 Write-Host ("Deployed to {0} ({1:N0} MB)" -f $target, $size)

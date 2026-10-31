@@ -10,7 +10,7 @@ class BrowserClient {
 public:
 	~BrowserClient() { Stop(); }
 
-	bool Start(const std::wstring& helperPath, const std::wstring& url, uint32_t width, uint32_t height, std::string& error);
+	bool Start(const std::wstring& helperPath, const std::wstring& url, const std::wstring& mailPath, uint32_t width, uint32_t height, std::string& error);
 	void Stop();
 
 	bool IsRunning() const { return process_ != nullptr; }
@@ -27,6 +27,7 @@ public:
 	uint32_t PaintCount() const { return header_ ? header_->paintCount.load(std::memory_order_relaxed) : 0; }
 	ef::CursorKind Cursor() const;
 	bool TakeCloseRequest();
+	bool TakeMailOp(ef::MailOp& operation);
 
 private:
 	HANDLE mapping_ = nullptr;

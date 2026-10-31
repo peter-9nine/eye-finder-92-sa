@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EyeMail</title>
+<style>
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: #c0c0c0; color: #000; font: 15px Tahoma, sans-serif; }
+  header { flex: none; display: flex; align-items: baseline; gap: 14px; padding: 8px 12px; background: #000080; color: #fff; }
+  header h1 { margin: 0; font: bold 22px "Times New Roman", serif; }
+  #list { flex: 1 1 40%; min-height: 100px; overflow-y: auto; margin: 6px 6px 0; background: #fff; border: 2px inset #fff; }
+  table { width: 100%; border-collapse: collapse; }
+  th { position: sticky; top: 0; padding: 3px 8px; background: #c0c0c0; border: 1px outset #fff; text-align: left; font-weight: normal; }
+  td { padding: 3px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+  .from { width: 28%; }
+  .received { width: 19%; }
+  tr.mail { cursor: pointer; }
+  tr.unread td { font-weight: bold; }
+  tr.selected td { background: #000080; color: #fff; }
+  #empty { padding: 24px; text-align: center; color: #555; }
+  #reader { flex: 1 1 60%; min-height: 100px; display: flex; flex-direction: column; margin: 6px; background: #fff; border: 2px inset #fff; }
+  #details { flex: none; padding: 8px 10px; background: #e8e8e8; border-bottom: 1px solid #808080; }
+  #details b { display: inline-block; width: 66px; font-weight: normal; color: #444; }
+  #subjectRow { font-weight: bold; }
+  #actions { float: right; }
+  button { font: inherit; padding: 2px 12px; }
+  #body { flex: 1; overflow-y: auto; margin: 0; padding: 12px; font: 16px "Courier New", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #nothing { margin: auto; color: #555; }
+</style>
+</head>
+<body>
+  <header><h1>EyeMail</h1><span id="summary"></span></header>
+
+  <div id="list">
+    <table>
+      <thead><tr><th class="from">From</th><th>Subject</th><th class="received">Received</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" hidden>Your mailbox is empty.</div>
+  </div>
+
+  <div id="reader">
+    <div id="nothing">Select a message to read it.</div>
+    <div id="details" hidden>
+      <div id="actions"><button id="remove">Delete</button></div>
+      <div><b>From:</b><span id="readFrom"></span></div>
+      <div><b>Received:</b><span id="readReceived"></span></div>
+      <div id="subjectRow"><b>Subject:</b><span id="readSubject"></span></div>
+    </div>
+    <div id="body" hidden></div>
+  </div>
+
+<script>
+  const byId = (id) => document.getElementById(id);
+
+  // La cabecera propia impide que otra web llame a esta API: sin CORS, el navegador lo bloquea.
+  const call = (path, method = 'GET') =>
+    fetch(path, { method, cache: 'no-store', headers: { 'X-EyeFinder': '1' } });
+
+  let mails = [];
+  let selectedId = null;
+
+  // El texto siempre entra como texto: un correo de otro mod no puede inyectar nada en la página.
+  function fillBody(text) {
+    const body = byId('body');
+    body.textContent = '';
+    const pattern = /https?:\/\/[^\s<>"']+/g;
+    let last = 0;
+    for (const match of text.matchAll(pattern)) {
+      body.append(text.slice(last, match.index));
+      const link = document.createElement('a');
+      link.href = match[0];
+      link.textContent = match[0];
+      body.append(link);
+      last = match.index + match[0].length;
+    }
+    body.append(text.slice(last));
+  }
+
+  function render() {
+    const rows = byId('rows');
+    rows.textContent = '';
+
+    // Lo más reciente, arriba.
+    for (const mail of [...mails].reverse()) {
+      const row = document.createElement('tr');
+      row.className = 'mail' + (mail.read ? '' : ' unread') + (mail.id === selectedId ? ' selected' : '');
+      for (const value of [mail.from, mail.subject, mail.received]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
+      row.onclick = () => select(mail.id);
+      rows.append(row);
+    }
+
+    const unread = mails.filter((mail) => !mail.read).length;
+    byId('summary').textContent = mails.length + (mails.length === 1 ? ' message' : ' messages') + ', ' + unread + ' unread';
+    document.title = unread ? 'EyeMail (' + unread + ')' : 'EyeMail';
+    byId('empty').hidden = mails.length > 0;
+  }
+
+  function renderReader() {
+    const mail = mails.find((item) => item.id === selectedId);
+    byId('nothing').hidden = !!mail;
+    byId('details').hidden = !mail;
+    byId('body').hidden = !mail;
+    if (!mail) return;
+    byId('readFrom').textContent = mail.from;
+    byId('readReceived').textContent = mail.received;
+    byId('readSubject').textContent = mail.subject;
+    fillBody(mail.body);
+    byId('body').scrollTop = 0;
+  }
+
+  function select(id) {
+    selectedId = id;
+    const mail = mails.find((item) => item.id === id);
+    if (mail && !mail.read) {
+      mail.read = true;
+      call('/api/read/' + id, 'POST');
+    }
+    render();
+    renderReader();
+  }
+
+  byId('remove').onclick = () => {
+    if (selectedId === null) return;
+    call('/api/delete/' + selectedId, 'POST');
+    mails = mails.filter((mail) => mail.id !== selectedId);
+    selectedId = null;
+    render();
+    renderReader();
+  };
+
+  async function refresh() {
+    try {
+      const response = await call('/api/inbox');
+      if (!response.ok) return;
+      const data = await response.json();
+      const fresh = data.mail.mails;
+
+      // Una operación puede estar en camino: lo que el jugador acaba de hacer manda.
+      const known = new Map(mails.map((mail) => [mail.id, mail]));
+      for (const mail of fresh) {
+        if (known.get(mail.id)?.read) mail.read = true;
+      }
+      if (JSON.stringify(fresh) === JSON.stringify(mails)) return;
+
+      const wasReading = selectedId;
+      mails = fresh;
+      if (wasReading !== null && !mails.some((mail) => mail.id === wasReading)) selectedId = null;
+      render();
+      if (selectedId !== wasReading) renderReader();
+    }
+    catch (error) {
+      // El archivo se puede estar sustituyendo justo ahora: se reintenta en la siguiente vuelta.
+    }
+  }
+
+  renderReader();
+  refresh();
+  setInterval(refresh, 1500);
+</script>
+</body>
+</html>
