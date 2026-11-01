@@ -1,5 +1,10 @@
 // EyeFinder92SA public API, version 4. Copy this file into your mod.
 //
+// Free mods can copy this file, as long as these license lines stay in it. Using it in
+// anything that makes money needs the author's permission.
+// License: PolyForm Noncommercial 1.0.0, https://polyformproject.org/licenses/noncommercial/1.0.0
+// Required Notice: Copyright (c) 2026 Peter_99 (https://github.com/peter-9nine/eye-finder-92-sa)
+//
 // Every function is safe to call from any thread and at any time. Calls made before a
 // game is running wait in a queue. Text is UTF-8. If EyeFinder92SA isn't installed,
 // the helpers below do nothing and return 0.

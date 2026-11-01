@@ -7,7 +7,7 @@ Keep this list current: remove what gets fixed, and add what you find.
 - **Placeholder locations.** In `locations.json`, only the cyber cafe uses a known position. The three police stations and the dark web computer, at Zero's RC shop, are approximate and unverified. Stand at each real computer and correct them.
 - **F8 is on by default.** It lets players open any session anywhere. See the [release checklist](release.md#release-checklist).
 - **Chromium's sandbox is off.** See [Before shipping with real internet access](release.md#before-shipping-with-real-internet-access).
-- **`include/GInputAPI.h` has no stated license.** It's the header GInput publishes for other mods to use, but neither it nor the copy here says what terms apply, so it isn't in `licenses`. Ask its author, or check GInput's own release, before making the repository public.
+- **`include/GInputAPI.h` has no stated license.** It's the header GInput publishes for other mods to use, but neither it nor the copy here says what terms apply, so it isn't in `licenses`. The repository is already public, so ask its author or check GInput's own release soon.
 - **Placeholder content.** The two sample sites in `public/sites/hidden` and the recycle bin's files are placeholder text.
 
 ## Bugs

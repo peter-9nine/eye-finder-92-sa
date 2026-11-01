@@ -174,4 +174,6 @@ Peter_99
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). The libraries it uses keep their own licenses, which are in [`licenses`](licenses/README.md).
+[PolyForm Noncommercial 1.0.0](LICENSE). You can play, change and share EyeFinder92SA for free, as long as you keep the license and credit, but you can't sell it or use its code to make money without asking Peter_99 first. Playing it in videos and streams is fine, including on monetized channels.
+
+The libraries it uses keep their own licenses, which are in [`licenses`](licenses/README.md).

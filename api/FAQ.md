@@ -541,6 +541,10 @@ Have them copy your site folder into `modloader\EyeFinder92SA\sites`, and any ad
 
 No. Updates only replace the `system` folder and the browser program, and public sites and ads live outside them.
 
+### Can I charge for my site or mod?
+
+What you make yourself stays yours, but anything that includes EyeFinder92SA's code, such as a copy of `EyeFinderApi.h`, can't be sold or used to make money without asking Peter_99 first. Free sites and mods are fine. See the [license](../LICENSE).
+
 ## Troubleshooting
 
 ### My site says "This page does not exist"
