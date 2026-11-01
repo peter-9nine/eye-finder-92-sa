@@ -8,7 +8,7 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 5;
+constexpr uint32_t kProtocol = 6;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
@@ -30,7 +30,7 @@ constexpr uint32_t kModRightMouse = 1u << 6;
 
 enum class EventType : uint32_t {
 	MouseMove,
-	MouseDown,   // a = botón (0 izquierdo, 1 central, 2 derecho)
+	MouseDown,   // a = botón (0 izquierdo, 1 central, 2 derecho), b = 1 si viene del mando
 	MouseUp,     // a = botón
 	Wheel,       // a = delta X, b = delta Y
 	KeyDown,     // a = virtual key, b = lParam
@@ -40,7 +40,13 @@ enum class EventType : uint32_t {
 	Hide,
 	Invalidate,  // pide repintar, por ejemplo tras perder el dispositivo D3D
 	MailChanged, // a = correos sin leer
-	Quit
+	Quit,
+	PadKeyboard  // a = PadKeyboardAction
+};
+
+// Lo que el mando le pide al teclado en pantalla.
+enum class PadKeyboardAction : int32_t {
+	Up, Down, Left, Right, Press, Close, Backspace, Space, CaretLeft, CaretRight, Shift, Go
 };
 
 struct Event {
@@ -129,6 +135,9 @@ struct Header {
 	// Se lee con un contador: impar mientras el plugin escribe, y si cambia, se vuelve a leer.
 	std::atomic<uint32_t> gameStateSequence;
 	GameStateData gameState;
+
+	// El teclado en pantalla está abierto: el mando es suyo, no del cursor ni del busca.
+	std::atomic<uint32_t> keyboardOpen;
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);
 static_assert(sizeof(Header) <= kHeaderSize);

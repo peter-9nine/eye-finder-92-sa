@@ -320,7 +320,8 @@ void MailSystem::StepPagerMemory(bool older) {
 
 // Mantener la cruceta a la izquierda abre o cierra el busca. Con él en pantalla, izquierda y derecha lo recorren.
 void MailSystem::UpdatePad() {
-	if (!GameCanShowNotifications()) {
+	// La cruceta del teclado en pantalla no debe mover el busca.
+	if (!GameCanShowNotifications() || overlay_->KeyboardOpen()) {
 		padHoldStart_ = 0;
 		return;
 	}

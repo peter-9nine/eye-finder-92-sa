@@ -319,7 +319,9 @@ void BrowserOverlay::UpdateMouse() {
 	if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) buttons |= ef::kModLeftMouse;
 	if (GetAsyncKeyState(VK_MBUTTON) & 0x8000) buttons |= ef::kModMiddleMouse;
 	if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) buttons |= ef::kModRightMouse;
-	if (pad_->Held() & ~padIgnored_ & kPadA) buttons |= ef::kModLeftMouse;
+	// Con el teclado en pantalla abierto, A pulsa sus teclas. El ratón sigue haciendo clic.
+	const bool mouseLeft = (buttons & ef::kModLeftMouse) != 0;
+	if (!padKeyboardOpen_ && (pad_->Held() & ~padIgnored_ & kPadA)) buttons |= ef::kModLeftMouse;
 
 	const uint32_t modifiers = KeyboardModifiers();
 
@@ -340,7 +342,9 @@ void BrowserOverlay::UpdateMouse() {
 		if (now && !inside) continue;  // Un clic fuera de la ventana no es nuestro.
 
 		buttons_ = now ? (buttons_ | entry.flag) : (buttons_ & ~entry.flag);
-		client_.Send({ now ? ef::EventType::MouseDown : ef::EventType::MouseUp, x, y, entry.button, 0, modifiers | buttons_ });
+		// El helper abre el teclado en pantalla solo si el clic viene del mando.
+		const int32_t fromPad = now && entry.button == 0 && !mouseLeft ? 1 : 0;
+		client_.Send({ now ? ef::EventType::MouseDown : ef::EventType::MouseUp, x, y, entry.button, fromPad, modifiers | buttons_ });
 	}
 
 	CPad* pad = CPad::GetPad(0);
@@ -415,6 +419,18 @@ void BrowserOverlay::UpdatePad() {
 	const float seconds = (std::min)(std::chrono::duration<float>(now - padLastUpdate_).count(), 0.1f);
 	padLastUpdate_ = now;
 
+	// El botón que abre o cierra el teclado sigue pulsado: no debe pulsar una tecla ni hacer clic debajo.
+	const bool keyboardOpen = client_.KeyboardOpen();
+	if (keyboardOpen != padKeyboardOpen_) {
+		padKeyboardOpen_ = keyboardOpen;
+		padIgnored_ = pad_->Held();
+		padKeyboardHeld_ = 0;
+	}
+	if (keyboardOpen) {
+		UpdatePadKeyboard();
+		return;
+	}
+
 	MoveCursorWithPad(seconds);
 	ScrollWithPad(seconds);
 
@@ -448,6 +464,54 @@ void BrowserOverlay::UpdatePad() {
 			client_.Send({ ef::EventType::KeyDown, 0, 0, key, PadKeyParam(key, true), buttons_ });
 			padRepeatAt_[i] = tick + kPadRepeatIntervalMs;
 		}
+	}
+}
+
+void BrowserOverlay::UpdatePadKeyboard() {
+	const auto held = [this](PadButton button) { return (pad_->Held() & ~padIgnored_ & button) != 0; };
+
+	// El stick funciona como la cruceta, en la dirección donde esté más inclinado.
+	const float stickX = pad_->LeftX();
+	const float stickY = pad_->LeftY();
+	const bool horizontal = std::abs(stickX) >= std::abs(stickY);
+	constexpr float kStickThreshold = 0.5f;
+
+	using Action = ef::PadKeyboardAction;
+	const struct { bool down; Action action; bool repeats; } inputs[] = {
+		{ held(kPadDPadUp) || (!horizontal && stickY > kStickThreshold), Action::Up, true },
+		{ held(kPadDPadDown) || (!horizontal && stickY < -kStickThreshold), Action::Down, true },
+		{ held(kPadDPadLeft) || (horizontal && stickX < -kStickThreshold), Action::Left, true },
+		{ held(kPadDPadRight) || (horizontal && stickX > kStickThreshold), Action::Right, true },
+		{ held(kPadA), Action::Press, false },
+		{ held(kPadB), Action::Close, false },
+		{ held(kPadX), Action::Backspace, true },
+		{ held(kPadY), Action::Space, false },
+		{ held(kPadLeftShoulder), Action::CaretLeft, true },
+		{ held(kPadRightShoulder), Action::CaretRight, true },
+		{ held(kPadLeftThumb), Action::Shift, false },
+		{ held(kPadSelect), Action::Go, false },
+	};
+	static_assert(std::size(inputs) == std::size(padKeyboardRepeatAt_));
+
+	const DWORD tick = GetTickCount();
+	for (size_t i = 0; i < std::size(inputs); ++i) {
+		const uint32_t bit = 1u << i;
+		if (!inputs[i].down) {
+			padKeyboardHeld_ &= ~bit;
+			continue;
+		}
+
+		if (!(padKeyboardHeld_ & bit)) {
+			padKeyboardHeld_ |= bit;
+			padKeyboardRepeatAt_[i] = tick + kPadRepeatDelayMs;
+		}
+		else if (!inputs[i].repeats || static_cast<int32_t>(tick - padKeyboardRepeatAt_[i]) < 0) {
+			continue;
+		}
+		else {
+			padKeyboardRepeatAt_[i] = tick + kPadRepeatIntervalMs + 40;
+		}
+		client_.Send({ ef::EventType::PadKeyboard, 0, 0, static_cast<int32_t>(inputs[i].action) });
 	}
 }
 

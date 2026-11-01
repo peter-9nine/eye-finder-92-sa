@@ -28,6 +28,7 @@ public:
 	// El juego no debe recentrar el cursor mientras el navegador lo usa.
 	bool UsesCursor() const;
 	bool IsOpen() const { return phase_ != Phase::Closed; }
+	bool KeyboardOpen() const { return client_.KeyboardOpen(); }
 
 	void SetUnreadMail(int unread);
 	bool TakeMailOp(ef::MailOp& operation) { return client_.TakeMailOp(operation); }
@@ -51,6 +52,7 @@ private:
 	bool EnsureHelper();
 	void UpdateMouse();
 	void UpdatePad();
+	void UpdatePadKeyboard();
 	void MoveCursorWithPad(float seconds);
 	void ScrollWithPad(float seconds);
 	void SendPadShortcut(int32_t key, uint32_t modifiers);
@@ -86,6 +88,9 @@ private:
 	float padWheelCarryX_ = 0.0f;
 	float padWheelCarryY_ = 0.0f;
 	DWORD padRepeatAt_[2] = {};
+	bool padKeyboardOpen_ = false;
+	uint32_t padKeyboardHeld_ = 0;
+	DWORD padKeyboardRepeatAt_[12] = {};
 
 	// Estadísticas del prototipo.
 	DWORD statsStart_ = 0;

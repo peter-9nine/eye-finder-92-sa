@@ -87,6 +87,22 @@ View* gKeyboard = nullptr;
 
 uint32_t gWriterSlot = 0;
 
+// Teclado en pantalla: la interfaz lo dibuja, y aquí se compone encima de la pestaña.
+bool gKeyboardOpen = false;
+CefRect gKeyboardRect;
+View* gKeyboardReturn = nullptr;       // Quién recupera el teclado físico al cerrarlo.
+CefRefPtr<CefFrame> gKeyboardFrame;    // El marco con la casilla que se está editando.
+bool gFieldQueryPending = false;
+bool gFieldApplyPending = false;
+
+constexpr char kMsgQueryField[] = "ef.queryField";
+constexpr char kMsgFieldInfo[] = "ef.fieldInfo";
+constexpr char kMsgApplyField[] = "ef.applyField";
+constexpr char kMsgFieldApplied[] = "ef.fieldApplied";
+
+void OnFieldInfo(CefRefPtr<CefFrame> frame, const std::string& json);
+void OnFieldApplied(CefRefPtr<CefBrowser> browser, bool submit);
+
 void ComposeAndPublish();
 void SetKeyboardTarget(View* view);
 void PublishCursor();
@@ -501,6 +517,15 @@ public:
 	CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
 
 	bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source, CefRefPtr<CefProcessMessage> message) override {
+		const std::string name = message->GetName().ToString();
+		if (!IsShell() && name == kMsgFieldInfo) {
+			OnFieldInfo(frame, message->GetArgumentList()->GetString(0).ToString());
+			return true;
+		}
+		if (!IsShell() && name == kMsgFieldApplied) {
+			OnFieldApplied(browser, message->GetArgumentList()->GetBool(0));
+			return true;
+		}
 		return router_ && router_->OnProcessMessageReceived(browser, frame, source, message);
 	}
 
@@ -566,6 +591,7 @@ public:
 		if (gHover == this) gHover = nullptr;
 		if (gCaptured == this) gCaptured = nullptr;
 		if (gKeyboard == this) gKeyboard = nullptr;
+		if (gKeyboardReturn == this) gKeyboardReturn = nullptr;
 
 		if (--gOpenBrowsers == 0 && gClosingAll) SetEvent(gAllClosed);
 	}
@@ -848,6 +874,20 @@ void ComposeAndPublish() {
 		}
 	}
 
+	// El teclado queda sobre la pestaña, que sigue viéndose por encima de él.
+	if (gKeyboardOpen) {
+		const int left = std::max(gKeyboardRect.x, 0);
+		const int top = std::max(gKeyboardRect.y, 0);
+		const int right = std::min(gKeyboardRect.x + gKeyboardRect.width, viewWidth);
+		const int bottom = std::min(gKeyboardRect.y + gKeyboardRect.height, viewHeight);
+		if (right > left) {
+			for (int y = top; y < bottom; ++y) {
+				const size_t offset = (size_t(y) * viewWidth + left) * 4;
+				std::memcpy(target + offset, gShell->Pixels() + offset, size_t(right - left) * 4);
+			}
+		}
+	}
+
 	gWriterSlot = gHeader->ready.exchange(gWriterSlot | ef::kNewFrame, std::memory_order_acq_rel) & ~ef::kNewFrame;
 	gHeader->paintCount.fetch_add(1, std::memory_order_relaxed);
 }
@@ -926,6 +966,98 @@ void SetLayout(int x, int y, int width, int height, bool visible) {
 	ComposeAndPublish();
 }
 
+// La página solo cambia al pulsar Go, y solo la casilla donde hizo clic el mando.
+void SetKeyboardOpen(bool open, const CefRect& rect) {
+	if (open) {
+		gKeyboardRect = rect;
+		if (!gKeyboardOpen) {
+			// La pestaña conserva su foco, para que la página no vea que se ha salido de la casilla.
+			gKeyboardReturn = gKeyboard == gShell.get() ? nullptr : gKeyboard;
+			gKeyboard = gShell.get();
+			if (gShell->Host()) gShell->Host()->SetFocus(true);
+		}
+	}
+	else if (gKeyboardOpen) {
+		if (gKeyboardReturn) SetKeyboardTarget(gKeyboardReturn);
+		gKeyboardReturn = nullptr;
+		gKeyboardFrame = nullptr;
+	}
+
+	gKeyboardOpen = open;
+	gHeader->keyboardOpen.store(open ? 1 : 0, std::memory_order_release);
+	ComposeAndPublish();
+}
+
+void ApplyKeyboardText(const std::string& text) {
+	if (!gKeyboardFrame || !gKeyboardFrame->IsValid()) return;
+
+	CefRefPtr<CefProcessMessage> request = CefProcessMessage::Create(kMsgApplyField);
+	request->GetArgumentList()->SetString(0, text);
+	gFieldApplyPending = true;
+	gKeyboardFrame->SendProcessMessage(PID_RENDERER, request);
+}
+
+// Solo responde a una pregunta nuestra, tras un clic del mando. Lo demás viene de la página: es solo texto.
+void OnFieldInfo(CefRefPtr<CefFrame> frame, const std::string& json) {
+	if (!gFieldQueryPending) return;
+	gFieldQueryPending = false;
+	if (gKeyboardOpen || json.empty()) return;
+
+	CefRefPtr<CefValue> parsed = CefParseJSON(json, JSON_PARSER_RFC);
+	if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) return;
+	CefRefPtr<CefDictionaryValue> field = parsed->GetDictionary();
+
+	CefRefPtr<CefDictionaryValue> details = CefDictionaryValue::Create();
+	details->SetString("type", StringField(field, "type"));
+	details->SetString("text", StringField(field, "text"));
+	details->SetString("label", StringField(field, "label"));
+	details->SetInt("maxLength", field->HasKey("maxLength") && field->GetType("maxLength") == VTYPE_INT ? field->GetInt("maxLength") : 0);
+
+	gKeyboardFrame = frame;
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(details);
+	CallShell("keyboardOpen", value);
+}
+
+void OnFieldApplied(CefRefPtr<CefBrowser> browser, bool submit) {
+	if (!gFieldApplyPending) return;
+	gFieldApplyPending = false;
+	if (!submit || !browser->GetHost()) return;
+
+	// Un Enter de verdad: la página lo trata como si lo hubiera pulsado el jugador.
+	CefKeyEvent key;
+	key.windows_key_code = VK_RETURN;
+	key.type = KEYEVENT_RAWKEYDOWN;
+	browser->GetHost()->SendKeyEvent(key);
+	key.type = KEYEVENT_CHAR;
+	key.windows_key_code = '\r';
+	browser->GetHost()->SendKeyEvent(key);
+	key.type = KEYEVENT_KEYUP;
+	key.windows_key_code = VK_RETURN;
+	browser->GetHost()->SendKeyEvent(key);
+}
+
+// Se pregunta un momento después del clic, para que Chromium ya haya movido el foco.
+void QueryFocusedField(int tabId) {
+	if (gKeyboardOpen) return;
+
+	if (tabId < 0) {
+		CallShell("padClicked", StringValue(""));
+		return;
+	}
+
+	auto found = gTabs.find(tabId);
+	CefRefPtr<CefBrowser> browser = found == gTabs.end() ? nullptr : found->second->Browser();
+	if (!browser) return;
+
+	CefRefPtr<CefFrame> frame = browser->GetFocusedFrame();
+	if (!frame) frame = browser->GetMainFrame();
+	if (!frame || !frame->IsValid()) return;
+
+	gFieldQueryPending = true;
+	frame->SendProcessMessage(PID_RENDERER, CefProcessMessage::Create(kMsgQueryField));
+}
+
 bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int64_t, const CefString& request, bool, CefRefPtr<Callback> callback) {
 	// Solo la interfaz, nunca una página web, puede dar órdenes.
 	if (!gShell || !gShell->Browser() || !browser->IsSame(gShell->Browser()) || !frame->IsMain() ||
@@ -996,6 +1128,13 @@ bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 	else if (command == "logOff") {
 		gHeader->closeRequest.store(1, std::memory_order_release);
 	}
+	else if (command == "keyboard") {
+		const bool open = message->GetBool("open");
+		SetKeyboardOpen(open, open ? CefRect(message->GetInt("x"), message->GetInt("y"), message->GetInt("w"), message->GetInt("h")) : CefRect());
+	}
+	else if (command == "keyboardApply") {
+		ApplyKeyboardText(message->GetString("text").ToString());
+	}
 	else {
 		return false;
 	}
@@ -1015,6 +1154,65 @@ void CreateShell() {
 	gShell = new View(-1);
 	CefBrowserHost::CreateBrowser(window, gShell, gShellUrl, settings, nullptr, nullptr);
 }
+
+// Se ejecutan dentro de la página, en el proceso de renderizado, para leer y escribir la casilla con el foco.
+constexpr char kActiveFieldScript[] = R"js(
+function efActiveField() {
+  let element = document.activeElement;
+  while (element && element.shadowRoot && element.shadowRoot.activeElement) element = element.shadowRoot.activeElement;
+  if (!element || element.disabled || element.readOnly) return null;
+  if (element.tagName === 'TEXTAREA') return element;
+  if (element.tagName === 'INPUT') {
+    return ['text', 'search', 'url', 'email', 'tel', 'password', 'number'].includes((element.type || 'text').toLowerCase()) ? element : null;
+  }
+  return element.isContentEditable ? element : null;
+}
+)js";
+
+constexpr char kQueryFieldScript[] = R"js((function () {
+  const element = efActiveField();
+  if (!element) return '';
+  const isInput = element.tagName === 'INPUT';
+  const isEditable = !isInput && element.tagName !== 'TEXTAREA';
+  return JSON.stringify({
+    type: isInput ? element.type.toLowerCase() : 'multiline',
+    text: isEditable ? element.innerText : element.value,
+    label: (element.getAttribute('aria-label') || element.placeholder || '') + '',
+    maxLength: element.maxLength > 0 ? element.maxLength : 0,
+  });
+})())js";
+
+// insertText es como escribir de verdad: las páginas que escuchan cada cambio también se enteran.
+// Devuelve 'submit' si la casilla debe recibir Enter: no en una con varias líneas, ni en un formulario
+// al que aún le falta otra casilla, como un usuario sin su contraseña.
+constexpr char kApplyFieldScript[] = R"js((function (text) {
+  const element = efActiveField();
+  if (!element) return '';
+  const isField = element.tagName === 'INPUT' || element.tagName === 'TEXTAREA';
+
+  element.focus();
+  if (isField) { try { element.select(); } catch (error) {} }
+  else window.getSelection().selectAllChildren(element);
+
+  try { document.execCommand(text === '' ? 'delete' : 'insertText', false, text); } catch (error) {}
+
+  if (isField && element.value !== text) {
+    const prototype = element.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, text);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  if (element.tagName !== 'INPUT') return '';
+  if (element.form) {
+    for (const other of element.form.elements) {
+      const needsText = other !== element && other.tagName === 'INPUT' && !other.disabled && !other.readOnly &&
+        ['text', 'search', 'url', 'email', 'tel', 'password', 'number'].includes(other.type) && other.offsetParent !== null;
+      if (needsText && other.value === '') return '';
+    }
+  }
+  return 'submit';
+}))js";
 
 class App : public CefApp, public CefBrowserProcessHandler, public CefRenderProcessHandler {
 public:
@@ -1050,10 +1248,40 @@ public:
 	}
 
 	bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source, CefRefPtr<CefProcessMessage> message) override {
+		const std::string name = message->GetName().ToString();
+
+		if (name == kMsgQueryField) {
+			CefRefPtr<CefProcessMessage> reply = CefProcessMessage::Create(kMsgFieldInfo);
+			reply->GetArgumentList()->SetString(0, RunInFrame(frame, kQueryFieldScript));
+			frame->SendProcessMessage(PID_BROWSER, reply);
+			return true;
+		}
+
+		if (name == kMsgApplyField) {
+			CefRefPtr<CefValue> text = CefValue::Create();
+			text->SetString(message->GetArgumentList()->GetString(0));
+			const std::string call = std::string(kApplyFieldScript) + "(" + CefWriteJSON(text, JSON_WRITER_DEFAULT).ToString() + ")";
+
+			CefRefPtr<CefProcessMessage> reply = CefProcessMessage::Create(kMsgFieldApplied);
+			reply->GetArgumentList()->SetBool(0, RunInFrame(frame, call) == "submit");
+			frame->SendProcessMessage(PID_BROWSER, reply);
+			return true;
+		}
+
 		return router_ && router_->OnProcessMessageReceived(browser, frame, source, message);
 	}
 
 private:
+	// Todo va dentro de una función: efActiveField no se queda en la página.
+	static std::string RunInFrame(CefRefPtr<CefFrame> frame, const std::string& expression) {
+		CefRefPtr<CefV8Context> context = frame->GetV8Context();
+		CefRefPtr<CefV8Value> result;
+		CefRefPtr<CefV8Exception> exception;
+		const std::string code = std::string("(function () {") + kActiveFieldScript + "return " + expression + ";\n})()";
+		if (!context || !context->Eval(code, CefString(), 0, result, exception) || !result || !result->IsString()) return {};
+		return result->GetStringValue().ToString();
+	}
+
 	static void RegisterSites() {
 		// Los del mod van los últimos: si hay dos con el mismo nombre, mandan ellos.
 		RegisterSitesIn(PublicSitesFolder(), false);
@@ -1083,6 +1311,7 @@ private:
 
 // --- Entrada ---
 View* HitTest(int x, int y) {
+	if (gKeyboardOpen && gKeyboardRect.Contains(x, y)) return gShell.get();
 	if (gContentVisible && ActiveTabView() && x >= gContentRect.x && y >= gContentRect.y &&
 		x < gContentRect.x + gContentRect.width && y < gContentRect.y + gContentRect.height) {
 		return ActiveTabView();
@@ -1163,6 +1392,7 @@ void HandleEvent(const ef::Event& event) {
 	static int lastClickY = 0;
 	static int lastClickButton = -1;
 	static int clickCount = 1;
+	static bool padClick = false;
 
 	const auto button = event.a == 1 ? MBT_MIDDLE : (event.a == 2 ? MBT_RIGHT : MBT_LEFT);
 
@@ -1175,6 +1405,10 @@ void HandleEvent(const ef::Event& event) {
 	}
 
 	case ef::EventType::MouseDown: {
+		padClick = event.a == 0 && event.b == 1;
+		// Un clic fuera del teclado en pantalla es salir de él, sin cambiar nada.
+		if (gKeyboardOpen && !gKeyboardRect.Contains(event.x, event.y)) CallShell("keyboardCancel", StringValue(""));
+
 		View* target = HitTest(event.x, event.y);
 		UpdateHover(target, event);
 		gCaptured = target;
@@ -1199,6 +1433,9 @@ void HandleEvent(const ef::Event& event) {
 		View* target = gCaptured ? gCaptured : HitTest(event.x, event.y);
 		gCaptured = nullptr;
 		if (target && target->Host()) target->Host()->SendMouseClickEvent(MouseFor(target, event), button, true, clickCount);
+
+		if (padClick && event.a == 0 && target) CefPostDelayedTask(TID_UI, base::BindOnce(&QueryFocusedField, target->TabId()), 60);
+		padClick = false;
 		break;
 	}
 
@@ -1271,6 +1508,12 @@ void HandleEvent(const ef::Event& event) {
 		break;
 	}
 
+	case ef::EventType::PadKeyboard: {
+		static const char* const kActions[] = { "up", "down", "left", "right", "press", "close", "backspace", "space", "caretLeft", "caretRight", "shift", "go" };
+		if (event.a >= 0 && event.a < static_cast<int>(std::size(kActions))) CallShell("padKeyboard", StringValue(kActions[event.a]));
+		break;
+	}
+
 	case ef::EventType::Quit:
 		break;
 	}
@@ -1278,6 +1521,7 @@ void HandleEvent(const ef::Event& event) {
 
 void CloseEverything() {
 	gClosingAll = true;
+	gKeyboardFrame = nullptr;
 	if (gOpenBrowsers == 0) {
 		SetEvent(gAllClosed);
 		return;

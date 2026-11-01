@@ -180,6 +180,10 @@ void BrowserClient::PublishGameState(const ef::GameStateData& state) {
 	header_->gameStateSequence.store(sequence + 2, std::memory_order_release);
 }
 
+bool BrowserClient::KeyboardOpen() const {
+	return header_ && header_->keyboardOpen.load(std::memory_order_acquire) != 0;
+}
+
 bool BrowserClient::TakeCloseRequest() {
 	return header_ && header_->closeRequest.exchange(0, std::memory_order_acq_rel) != 0;
 }

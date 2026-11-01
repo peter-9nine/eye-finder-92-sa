@@ -207,6 +207,22 @@ void TypeText(const char* text) {
 	}
 }
 
+// Lo que hace UpdateMouse cuando el clic viene del botón A del mando.
+void PadClick(POINT point) {
+	gCursorX = float(point.x);
+	gCursorY = float(point.y);
+	gClient.Send({ ef::EventType::MouseMove, point.x, point.y });
+	Run(120);
+	gClient.Send({ ef::EventType::MouseDown, point.x, point.y, 0, 1, ef::kModLeftMouse });
+	gClient.Send({ ef::EventType::MouseUp, point.x, point.y, 0, 0, 0 });
+	Run(500);
+}
+
+void PadKey(ef::PadKeyboardAction action) {
+	gClient.Send({ ef::EventType::PadKeyboard, 0, 0, static_cast<int32_t>(action) });
+	Run(150);
+}
+
 void Control(int key) {
 	gClient.Send({ ef::EventType::KeyDown, 0, 0, key, 0, ef::kModControl });
 	gClient.Send({ ef::EventType::KeyUp, 0, 0, key, 0, ef::kModControl });
@@ -376,6 +392,142 @@ void TestMailFiles() {
 	Expect("text: other characters", ToPlainAscii("\xE2\x82\xAC" "5") == "?5");
 }
 
+std::string StoredValue(const char* key) {
+	const auto found = gStore.Values().find(key);
+	return found == gStore.Values().end() ? std::string() : found->second;
+}
+
+void TestKeyboard() {
+	using Action = ef::PadKeyboardAction;
+
+	// keyboard-tests.html, a partir de la esquina del hueco de contenido (168, 102).
+	constexpr POINT kUser = { 268, 127 };
+	constexpr POINT kPass = { 268, 167 };
+	constexpr POINT kNotes = { 268, 207 };
+	constexpr POINT kRich = { 268, 247 };
+	constexpr POINT kNumber = { 268, 287 };
+	constexpr POINT kLocked = { 268, 327 };
+	constexpr POINT kEmptyPage = { 800, 500 };
+
+	GoTo("www.eyefinder.info/keyboard-tests.html", 1200);
+
+	Click(kUser);
+	Expect("keyboard: a mouse click doesn't open it", !gClient.KeyboardOpen());
+
+	PadClick(kEmptyPage);
+	Expect("keyboard: a pad click outside a field doesn't open it", !gClient.KeyboardOpen());
+	PadClick(kLocked);
+	Expect("keyboard: a read-only field doesn't open it", !gClient.KeyboardOpen());
+
+	PadClick(kUser);
+	Expect("keyboard: a pad click on a field opens it", gClient.KeyboardOpen());
+	Shot("05b_keyboard");
+
+	// La primera tecla seleccionada es la q.
+	PadKey(Action::Press);
+	PadKey(Action::Press);
+	Run(200);
+	Shot("05c_keyboard_typed");
+	PadKey(Action::Close);
+	RunWithMail(300);
+	Expect("keyboard: Close closes it", !gClient.KeyboardOpen());
+	Expect("keyboard: Close changes nothing", StoredValue("keyboard.user").empty());
+
+	PadClick(kUser);
+	Expect("keyboard: opens again", gClient.KeyboardOpen());
+	PadKey(Action::Press);
+	PadKey(Action::Right);
+	PadKey(Action::Press);
+	PadKey(Action::Shift);
+	PadKey(Action::Right);
+	PadKey(Action::Press);
+	PadKey(Action::Space);
+	PadKey(Action::Press);
+	PadKey(Action::Backspace);
+	RunWithMail(300);
+	Expect("keyboard: nothing reaches the page before Go", StoredValue("keyboard.user").empty());
+	PadKey(Action::Go);
+	RunWithMail(500);
+	Expect("keyboard: Go closes it", !gClient.KeyboardOpen());
+	Expect("keyboard: Go writes the text", StoredValue("keyboard.user") == "qwE ");
+	Expect("keyboard: Go doesn't submit while another field is empty", StoredValue("keyboard.submits").empty());
+	Shot("05d_keyboard_applied");
+
+	// La casilla ya tiene texto: se sigue escribiendo al final, y ahora el formulario está completo.
+	PadClick(kPass);
+	PadKey(Action::Press);
+	Shot("05e_keyboard_password");
+	PadKey(Action::Go);
+	RunWithMail(500);
+	Expect("keyboard: password written", StoredValue("keyboard.pass") == "q");
+	Expect("keyboard: Go submits a complete form", StoredValue("keyboard.submits") == "1");
+
+	// Varias líneas: Enter es una línea nueva, y Go no envía nada.
+	PadClick(kNotes);
+	Expect("keyboard: opens on a textarea", gClient.KeyboardOpen());
+	TypeText("a");
+	gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_RETURN });
+	gClient.Send({ ef::EventType::Char, 0, 0, '\r' });
+	gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_RETURN });
+	Run(100);
+	TypeText("b");
+	Run(100);
+	Shot("05f_keyboard_multiline");
+	Expect("keyboard: Enter stays open in a textarea", gClient.KeyboardOpen());
+	PadKey(Action::Go);
+	RunWithMail(500);
+	Expect("keyboard: textarea written", StoredValue("keyboard.notes") == "a|b");
+	Expect("keyboard: Go doesn't submit from a textarea", StoredValue("keyboard.submits") == "1");
+
+	PadClick(kRich);
+	Expect("keyboard: opens on editable content", gClient.KeyboardOpen());
+	TypeText("rich");
+	PadKey(Action::Go);
+	RunWithMail(500);
+	Expect("keyboard: editable content written", StoredValue("keyboard.rich") == "rich");
+
+	PadClick(kNumber);
+	PadKey(Action::Press);  // Una q no vale en un número.
+	Expect("keyboard: a number field refuses letters", gClient.KeyboardOpen());
+	TypeText("42");
+	PadKey(Action::Go);
+	RunWithMail(500);
+	Expect("keyboard: number written", StoredValue("keyboard.number") == "42");
+
+	// Un clic de ratón fuera del teclado es salir sin cambiar nada.
+	PadClick(kUser);
+	Expect("keyboard: opens for the outside click", gClient.KeyboardOpen());
+	PadKey(Action::Press);
+	Click({ 800, 200 });  // Por encima del teclado.
+	RunWithMail(300);
+	Expect("keyboard: clicking outside closes it", !gClient.KeyboardOpen());
+	Expect("keyboard: clicking outside changes nothing", StoredValue("keyboard.user") == "qwE ");
+
+	// La barra de direcciones: Close deja la dirección, y Go navega.
+	PadClick(kAddress);
+	Expect("keyboard: opens on the address bar", gClient.KeyboardOpen());
+	Shot("05g_keyboard_address");
+	PadKey(Action::Press);
+	PadKey(Action::Close);
+	Run(300);
+	Expect("keyboard: Close leaves the address bar", !gClient.KeyboardOpen());
+	Shot("05h_keyboard_address_closed");
+
+	PadClick(kAddress);
+	TypeText("www.eyefinder.info/tests.html");
+	Run(100);
+	PadKey(Action::Go);
+	Run(1500);
+	Expect("keyboard: Go on the address bar closes it", !gClient.KeyboardOpen());
+	Shot("05i_keyboard_navigated");
+
+	// Tras navegar, el foco y el clic siguen funcionando: los usa la prueba siguiente.
+	PadClick(kTextField);
+	Expect("keyboard: opens on the new page", gClient.KeyboardOpen());
+	PadKey(Action::Close);
+	Run(200);
+}
+
 void Measure(const char* name, int milliseconds, bool scroll) {
 	gStats = {};
 	const uint32_t paints = gClient.PaintCount();
@@ -543,6 +695,8 @@ int wmain(int argc, wchar_t** argv) {
 	Click(kDropdownThird);
 	Run(300);
 	Shot("05_picked");
+
+	TestKeyboard();
 
 	Measure("idle", 3000, false);
 	Measure("scrolling", 5000, true);

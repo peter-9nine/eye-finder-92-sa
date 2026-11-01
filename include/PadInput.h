@@ -15,6 +15,8 @@ enum PadButton : uint32_t {
 	kPadB = 1u << 7,
 	kPadX = 1u << 8,
 	kPadY = 1u << 9,
+	kPadSelect = 1u << 10,
+	kPadLeftThumb = 1u << 11,
 };
 
 // El mando. GInput solo dice si el jugador lo está usando, y el estado se lee de CPad::GetPad(0).

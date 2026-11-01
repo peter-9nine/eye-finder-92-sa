@@ -68,6 +68,8 @@ void PadInput::Update() {
 	if (state.ButtonCircle) held_ |= kPadB;
 	if (state.ButtonSquare) held_ |= kPadX;
 	if (state.ButtonTriangle) held_ |= kPadY;
+	if (state.Select) held_ |= kPadSelect;
+	if (state.ShockButtonL) held_ |= kPadLeftThumb;
 
 	ReadStick(state.LeftStickX, state.LeftStickY, leftX_, leftY_);
 	ReadStick(state.RightStickX, state.RightStickY, rightX_, rightY_);

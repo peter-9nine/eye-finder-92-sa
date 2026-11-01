@@ -81,6 +81,25 @@
   #statusText { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #statusBar .bevel { height: 20px; min-width: 22px; font-size: 13px; line-height: 12px; }
   #zoomValue { width: 48px; }
+
+  /* Teclado en pantalla para el mando. El helper compone su rectángulo sobre la pestaña. */
+  #keyboard { position: fixed; bottom: 0; left: 50%; width: min(100vw, calc(100vh * 4 / 3)); transform: translateX(-50%); display: none; flex-direction: column; gap: 0.8vh; padding-bottom: 0.8vh; background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
+  #kbTitle { flex: none; height: 3.6vh; line-height: 3.6vh; padding: 0 10px; color: #fff; background: linear-gradient(90deg, #000080, #1084d0); font: bold 2.1vh/3.6vh var(--title-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #kbText { flex: none; display: block; width: calc(100% - 16px); margin: 0 8px; padding: 0.6vh 8px; height: 5.4vh; resize: none; background: #fff; border: 2px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font: 2.8vh var(--ui-font); outline: 0; overflow: hidden; white-space: pre; user-select: text; }
+  #kbText.multiline { height: 12vh; overflow-y: auto; white-space: pre-wrap; }
+  #kbText.masked { -webkit-text-security: disc; }
+  #kbKeys { flex: none; display: flex; flex-direction: column; gap: 0.6vh; padding: 0 8px; }
+  .kbRow { display: flex; gap: 0.6vh; }
+  .kbKey { flex-basis: 0; min-width: 0; height: 5.8vh; font-size: 2.6vh; line-height: 1; white-space: nowrap; overflow: hidden; }
+  .kbKey.special { background: #a8a8a8; font-size: 2.2vh; }
+  .kbKey.go { background: #2e7d32; color: #fff; font-weight: bold; }
+  .kbKey.close { background: #a03030; color: #fff; font-weight: bold; }
+  .kbKey.latched { background: #ffffcc; color: #000; }
+  .kbKey.selected { outline: 0.5vh solid #ffb000; outline-offset: -0.5vh; position: relative; background: #ffe9a8; color: #000; }
+  .kbKey.go.selected { background: #66bb6a; }
+  .kbKey.close.selected { background: #e57373; }
+  #kbLegend { flex: none; padding: 0 8px; font-size: 1.9vh; text-align: center; white-space: nowrap; overflow: hidden; }
+  #kbLegend b { padding: 0 3px; }
 </style>
 </head>
 <body>
@@ -148,6 +167,13 @@
       <button class="bevel" id="alertStay">Stay local</button>
     </div>
   </div>
+</div>
+
+<div id="keyboard" role="dialog" aria-labelledby="kbTitle">
+  <div id="kbTitle"></div>
+  <textarea id="kbText" rows="1" spellcheck="false" autocomplete="off" aria-labelledby="kbTitle"></textarea>
+  <div id="kbKeys"></div>
+  <div id="kbLegend"><b>Stick/D-pad</b>Move · <b>A/✕</b>Press · <b>X/□</b>Delete · <b>Y/△</b>Space · <b>LB/RB</b>Cursor · <b>L3</b>Shift · <b>Back</b>Go · <b>B/○</b>Close</div>
 </div>
 
 <script>
@@ -294,6 +320,7 @@
 
   // Siempre se pregunta: no hay "no volver a preguntar".
   function askForInternet(url, newTab) {
+    closeKeyboard(false);
     pendingInternet = { url, newTab };
     byId('alertReason').textContent = url
       ? 'This address is on the real internet, and you are browsing local sites only:'
@@ -319,8 +346,235 @@
     byId('netMode').title = enabled ? 'Connected to the real internet. Click to go back to local sites only.' : 'Local sites only. Click to connect to the real internet.';
   }
 
+  // --- Teclado en pantalla ---
+  // El texto se edita aquí, y la casilla no cambia hasta pulsar Go.
+  const kbKey = (action, label, span = 1, style = 'special') => ({ action, label, span, style });
+  const kbChars = (text) => [...text].map((char) => ({ char, span: 1 }));
+  const KB_NUMBERS = [...kbChars('1234567890'), kbKey('backspace', '⌫ Delete', 2)];
+
+  function keyboardRows() {
+    const extra = keyboard.type === 'multiline' ? kbKey('newline', '⏎ New line', 2)
+      : keyboard.type === 'password' ? kbKey('reveal', keyboard.revealed ? 'Hide' : 'Show', 2)
+      : { char: '.com', span: 2 };
+    const bottom = (symbolsLabel) => [
+      kbKey('symbols', symbolsLabel, 2), ...kbChars('@'), extra, kbKey('space', 'Space', 3),
+      kbKey('caretLeft', '◄'), kbKey('caretRight', '►'),
+      kbKey('close', 'Close', 1.5, 'close'), kbKey('go', 'Go', 1.5, 'go'),
+    ];
+    if (keyboard.symbols) {
+      return [
+        KB_NUMBERS,
+        kbChars('!#$%^&*()+=_'),
+        kbChars('~`[]{};\'"\\|<'),
+        [...kbChars('>ñáéíóúü¿¡'), ...kbChars(':/')],
+        bottom('abc'),
+      ];
+    }
+    return [
+      KB_NUMBERS,
+      kbChars('qwertyuiop-_'),
+      kbChars('asdfghjkl:/\''),
+      [kbKey('shift', '⇧ Shift', 2), ...kbChars('zxcvbnm.,?')],
+      bottom('&123'),
+    ];
+  }
+
+  let keyboard = { open: false };
+  const kbText = byId('kbText');
+
+  function renderKeyboard() {
+    const rows = keyboardRows();
+    keyboard.row = Math.min(keyboard.row, rows.length - 1);
+    keyboard.col = Math.min(keyboard.col, rows[keyboard.row].length - 1);
+    keyboard.keys = rows;
+
+    const host = byId('kbKeys');
+    host.textContent = '';
+    rows.forEach((row, rowIndex) => {
+      const line = document.createElement('div');
+      line.className = 'kbRow';
+      row.forEach((key, colIndex) => {
+        const button = document.createElement('button');
+        const isLetter = keyboard.shift && key.char && key.char.length === 1;
+        button.className = 'bevel kbKey' + (key.action ? ' ' + key.style : '') +
+          (rowIndex === keyboard.row && colIndex === keyboard.col ? ' selected' : '') +
+          (key.action === 'shift' && keyboard.shift ? ' latched' : '');
+        button.textContent = key.char ? (isLetter ? key.char.toUpperCase() : key.char) : key.label;
+        button.style.flexGrow = key.span;
+        // El ratón también sirve, sin quitarle el foco al texto.
+        button.onmousedown = (event) => event.preventDefault();
+        button.onclick = () => {
+          keyboard.row = rowIndex;
+          keyboard.col = colIndex;
+          pressKey(key);
+        };
+        line.appendChild(button);
+      });
+      host.appendChild(line);
+    });
+  }
+
+  function insertText(text) {
+    if (keyboard.type === 'number') text = text.replace(/[^0-9.eE+-]/g, '');
+    if (keyboard.type !== 'multiline') text = text.replace(/\n/g, '');
+    const { selectionStart: start, selectionEnd: end, value } = kbText;
+    if (keyboard.maxLength > 0) text = text.slice(0, Math.max(keyboard.maxLength - (value.length - (end - start)), 0));
+    if (text) kbText.setRangeText(text, start, end, 'end');
+  }
+
+  function deleteBackward() {
+    const { selectionStart: start, selectionEnd: end, value } = kbText;
+    if (start !== end) {
+      kbText.setRangeText('', start, end, 'end');
+    }
+    else if (start > 0) {
+      // Una letra fuera del plano básico son dos unidades de UTF-16.
+      const low = value.charCodeAt(start - 1);
+      const pair = start > 1 && low >= 0xDC00 && low <= 0xDFFF;
+      kbText.setRangeText('', start - (pair ? 2 : 1), start, 'end');
+    }
+  }
+
+  function moveCaret(step) {
+    const { selectionStart: start, selectionEnd: end, value } = kbText;
+    const target = start !== end ? (step < 0 ? start : end) : Math.max(Math.min(start + step, value.length), 0);
+    kbText.setSelectionRange(target, target);
+  }
+
+  function pressKey(key) {
+    if (key.char) {
+      insertText(keyboard.shift && key.char.length === 1 ? key.char.toUpperCase() : key.char);
+      keyboard.shift = false;
+    }
+    else {
+      switch (key.action) {
+        case 'backspace': deleteBackward(); break;
+        case 'space': insertText(' '); break;
+        case 'newline': insertText('\n'); break;
+        case 'caretLeft': moveCaret(-1); break;
+        case 'caretRight': moveCaret(1); break;
+        case 'shift': keyboard.shift = !keyboard.shift; break;
+        case 'symbols': keyboard.symbols = !keyboard.symbols; keyboard.shift = false; break;
+        case 'reveal':
+          keyboard.revealed = !keyboard.revealed;
+          kbText.classList.toggle('masked', !keyboard.revealed);
+          break;
+        case 'close': closeKeyboard(false); return;
+        case 'go': closeKeyboard(true); return;
+      }
+    }
+    showCaret();
+    renderKeyboard();
+  }
+
+  // Cambiar el texto desde código no desplaza la casilla: volver a darle el foco la lleva hasta el cursor.
+  function showCaret() {
+    kbText.blur();
+    kbText.focus();
+  }
+
+  // Arriba y abajo van a la tecla más cercana: las filas no tienen las mismas columnas.
+  function moveSelection(rows, cols) {
+    const count = keyboard.keys.length;
+    if (cols) {
+      const length = keyboard.keys[keyboard.row].length;
+      keyboard.col = (keyboard.col + cols + length) % length;
+    }
+    else {
+      const current = byId('kbKeys').children[keyboard.row].children[keyboard.col].getBoundingClientRect();
+      const center = current.left + current.width / 2;
+      keyboard.row = (keyboard.row + rows + count) % count;
+      let best = Infinity;
+      [...byId('kbKeys').children[keyboard.row].children].forEach((button, index) => {
+        const rect = button.getBoundingClientRect();
+        const distance = Math.abs(rect.left + rect.width / 2 - center);
+        if (distance < best) {
+          best = distance;
+          keyboard.col = index;
+        }
+      });
+    }
+    renderKeyboard();
+  }
+
+  function openKeyboard(details) {
+    if (keyboard.open) return;
+    keyboard = {
+      open: true, target: details.target || 'page', type: details.type, maxLength: details.maxLength || 0,
+      row: 1, col: 0, shift: false, symbols: false, revealed: false,
+    };
+
+    byId('kbTitle').textContent = details.label || 'Type your text';
+    kbText.value = details.text || '';
+    kbText.maxLength = keyboard.maxLength > 0 ? keyboard.maxLength : 524288;
+    kbText.classList.toggle('multiline', keyboard.type === 'multiline');
+    kbText.classList.toggle('masked', keyboard.type === 'password');
+
+    byId('keyboard').style.display = 'flex';
+    renderKeyboard();
+    // Una dirección se suele cambiar entera. En lo demás, se sigue escribiendo al final.
+    if (keyboard.target === 'address') kbText.select();
+    else kbText.setSelectionRange(kbText.value.length, kbText.value.length);
+    showCaret();
+
+    const rect = byId('keyboard').getBoundingClientRect();
+    send({ cmd: 'keyboard', open: true, x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) });
+  }
+
+  function closeKeyboard(apply) {
+    if (!keyboard.open) return;
+    const text = kbText.value;
+    const { target } = keyboard;
+
+    keyboard = { open: false };
+    kbText.value = '';
+    kbText.blur();
+    byId('keyboard').style.display = 'none';
+
+    if (apply && target !== 'address') send({ cmd: 'keyboardApply', text });
+    send({ cmd: 'keyboard', open: false });
+
+    if (target === 'address') {
+      if (apply) {
+        byId('address').value = text;
+        navigate();
+      }
+      else {
+        render();
+      }
+    }
+  }
+
+  kbText.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && keyboard.type !== 'multiline') {
+      event.preventDefault();
+      closeKeyboard(true);
+    }
+  });
+
   // --- Llamadas desde el helper ---
   window.ef = {
+    keyboardOpen: openKeyboard,
+    keyboardCancel() { closeKeyboard(false); },
+    // La barra de direcciones es la única casilla de la interfaz.
+    padClicked() {
+      if (document.activeElement === byId('address')) {
+        openKeyboard({ target: 'address', type: 'url', text: byId('address').value, label: 'Web address' });
+      }
+    },
+    padKeyboard(action) {
+      if (!keyboard.open) return;
+      switch (action) {
+        case 'up': moveSelection(-1, 0); break;
+        case 'down': moveSelection(1, 0); break;
+        case 'left': moveSelection(0, -1); break;
+        case 'right': moveSelection(0, 1); break;
+        case 'press': pressKey(keyboard.keys[keyboard.row][keyboard.col]); break;
+        case 'close': closeKeyboard(false); break;
+        case 'go': closeKeyboard(true); break;
+        default: pressKey({ action });
+      }
+    },
     onTab(state) {
       const tab = tabs.find((item) => item.id === state.id);
       if (tab) Object.assign(tab, state);

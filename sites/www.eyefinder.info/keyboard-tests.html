@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Keyboard tests</title>
+<style>
+  /* El arnés hace clic en estas posiciones: no las muevas sin cambiarlo también. */
+  body { margin: 0; font: 16px Tahoma, sans-serif; background: #fff; }
+  input, textarea, #rich { position: absolute; left: 20px; width: 300px; height: 30px; font: inherit; border: 1px solid #000; padding: 2px; box-sizing: border-box; }
+  #user { top: 10px; }
+  #pass { top: 50px; }
+  #notes { top: 90px; }
+  #rich { top: 130px; }
+  #number { top: 170px; }
+  #locked { top: 210px; }
+  #send { position: absolute; left: 340px; top: 50px; font: inherit; }
+  #note { position: absolute; left: 340px; top: 10px; }
+</style>
+</head>
+<body>
+<form id="login">
+  <input id="user" placeholder="Name" aria-label="Your name">
+  <input id="pass" type="password" placeholder="Password">
+  <button id="send" type="submit">Send</button>
+</form>
+<textarea id="notes" placeholder="Notes"></textarea>
+<div id="rich" contenteditable="true"></div>
+<input id="number" type="number" placeholder="Number">
+<input id="locked" value="read only" readonly>
+<div id="note"></div>
+<script src="/_game/sa.js"></script>
+<script>
+  const report = (key, value) => {
+    document.getElementById('note').textContent = key + ' = ' + value;
+    sa.set('keyboard.' + key, value.replace(/\n/g, '|'));
+  };
+  for (const id of ['user', 'pass', 'notes', 'number']) {
+    document.getElementById(id).addEventListener('input', (event) => report(id, event.target.value));
+  }
+  document.getElementById('rich').addEventListener('input', (event) => report('rich', event.target.innerText));
+
+  let submits = 0;
+  document.getElementById('login').addEventListener('submit', (event) => {
+    event.preventDefault();
+    report('submits', String(++submits));
+  });
+</script>
+</body>
+</html>
