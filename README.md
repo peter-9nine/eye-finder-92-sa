@@ -154,4 +154,4 @@ Peter_99
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). The libraries it uses keep their own licenses, such as CEF's and those in [`vendor`](vendor/README.md).
+[PolyForm Noncommercial 1.0.0](LICENSE). The libraries it uses keep their own licenses, which are in [`licenses`](licenses/README.md).

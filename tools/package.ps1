@@ -14,6 +14,7 @@ Copy-Item "$root\bin\GTASA\$Configuration\EyeFinder92SA.asi", "$root\locations.j
 Copy-Item "$root\helper\build\Release\EyeFinderBrowser.exe" $browser
 Copy-Item "$root\helper\build\system" $package -Recurse
 Copy-Item "$root\dev" $package -Recurse
+Copy-Item "$root\licenses" $package -Recurse
 Copy-Item "$root\public\*" $package -Recurse
 
 # fetch-cef.ps1 holds the pinned version, so the instructions can't disagree with the build.
