@@ -24,6 +24,7 @@ Part of it loads a real website, so run it with an internet connection.
 - The pager, its memory and the keys file.
 - The on-screen keyboard, using simulated pad events.
 - Sessions, restricted sites and the recycle bin.
+- Pages stopping on `Hide` and carrying on after `Show`, and ending a session or quitting while they're stopped.
 - Search on both webs, the hidden folder, the engine choice, and the confirmation before a real search.
 - `locations.json` and the CEF check.
 - The public API, using a stand-in module named `EyeFinder92SA.asi`.
@@ -61,7 +62,7 @@ The harness has no game, and doesn't compile the game-specific files. So these n
 - Finding the right computer from the player's position.
 - Taking the player's money, and the receipt.
 - The save and load hooks.
-- The pause menu, fades and player controls.
+- The pause menu, Alt+Tab, fades and player controls.
 - The help box.
 - CLEO really running scripts.
 
@@ -72,13 +73,14 @@ Run through the parts your change could affect. Remember to deploy first, becaus
 **Opening and closing**
 - [ ] F8 opens and closes, and the game's controls come back afterwards.
 - [ ] Fades look right in both directions.
-- [ ] Esc opens the pause menu, pages go quiet, and everything's still there on return.
+- [ ] Esc opens the pause menu, pages stop, and everything's still there on return, with a playing video carrying on.
+- [ ] The same with Alt+Tab to another window, in fullscreen and in a window.
 - [ ] Changing resolution in the menu recovers.
 
 **Sessions**
 - [ ] F8, Shift+F8 and Ctrl+F8 give the right desktop.
 - [ ] Each session's icon opens its site, and other sessions refuse it.
-- [ ] The timer runs in a paid session, and doesn't run during the pause menu.
+- [ ] The timer runs in a paid session, and doesn't run during the pause menu or with another window in front.
 - [ ] Closing takes the money and shows the receipt.
 - [ ] With too little money, it takes what you have.
 - [ ] Reopening after any close starts at the desktop with no tabs, including after C.R.A.S.H.'s alarm.

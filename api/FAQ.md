@@ -147,6 +147,10 @@ It's a current version of Chromium, so modern HTML, CSS and JavaScript all work.
 | Video and audio | Use WebM, Ogg or MP3, because H.264 and AAC (most `.mp4` files) don't play |
 | New windows and `target="_blank"` | Open as a new tab |
 
+### What happens to my page when the player pauses or switches to another window?
+
+It stops: timers, animations and scripts don't run, and sound is muted. When the player comes back, it carries on from where it was, so a page can't count on running in the background. `Date.now()` keeps moving while the page waits, so anything that measures time will see a jump. If you need something to keep going while the player is away, use a CLEO script or a mod.
+
 ### How big should my page be?
 
 There's no fixed size, because it depends on the player's resolution. At 1280x720, the page area is about 944x586 pixels, and the player can maximize the window. Players can also zoom a page, with the buttons in the status bar, Ctrl and `+` or `-`, or Ctrl and the mouse wheel. Use a flexible layout, and test at more than one size. Long pages scroll normally. With a controller, players point with a stick, and clicking a text field opens an on-screen keyboard. The field only changes when they press Go, which also sends Enter, unless it's a text area or another field in the form is still empty. So your page gets the whole text at once, and it should have a visible submit button for forms with more than one field.

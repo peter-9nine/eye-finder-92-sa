@@ -1323,6 +1323,16 @@ void ApplyTabVisibility() {
 	}
 }
 
+// WasHidden only stops painting: timers, video and the network go on until the page is frozen too.
+// The shell isn't frozen, because it has to receive the session's end, and has nothing that keeps running.
+void FreezeTabs(bool frozen) {
+	CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+	params->SetString("state", frozen ? "frozen" : "active");
+	for (auto& [id, tab] : gTabs) {
+		if (tab->Host()) tab->Host()->ExecuteDevToolsMethod(0, "Page.setWebLifecycleState", params);
+	}
+}
+
 void OpenTab(int id, const std::string& url) {
 	CefRefPtr<View> view = new View(id);
 	gTabs[id] = view;
@@ -1910,6 +1920,7 @@ void HandleEvent(const ef::Event& event) {
 		for (auto& [id, tab] : gTabs) {
 			if (tab->Host()) tab->Host()->SetAudioMuted(false);
 		}
+		FreezeTabs(false);
 		ApplyTabVisibility();
 		if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(true);
 		else SetKeyboardTarget(gShell.get());
@@ -1931,6 +1942,7 @@ void HandleEvent(const ef::Event& event) {
 			if (tab->Host()) tab->Host()->SetAudioMuted(true);
 		}
 		ApplyTabVisibility();
+		FreezeTabs(true);
 		break;
 
 	case ef::EventType::Invalidate:

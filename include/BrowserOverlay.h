@@ -54,7 +54,8 @@ private:
 	void BeginClosing();
 	void FinishClosing();
 	void ReleaseGame();
-	void SyncPauseMenu();
+	void SyncPresence();
+	void Suspend();
 	void CheckForComputers();
 	void SendSession();
 	void UpdateSessionClock();
@@ -82,7 +83,7 @@ private:
 	Phase phase_ = Phase::Closed;
 	DWORD phaseStart_ = 0;
 	bool togglePending_ = false;
-	bool suspendedByMenu_ = false;
+	bool suspended_ = false;
 	unsigned short savedControls_ = 0;
 
 	int mouseX_ = 0;

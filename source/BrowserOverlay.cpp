@@ -77,6 +77,9 @@ bool BrowserOverlay::UsesCursor() const {
 LRESULT CALLBACK BrowserOverlay::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
 	BrowserOverlay& self = *gOverlay;
 
+	// Update may not run again until the window is back in front, so this can't wait for it.
+	if (message == WM_ACTIVATEAPP && !wParam) self.Suspend();
+
 	// The pause menu belongs to the game: while it's open, touch nothing.
 	if (!PauseMenuActive()) {
 		if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && self.keyFilter_ &&
@@ -170,7 +173,7 @@ void BrowserOverlay::SendSession() {
 	sessionSecondsSent_ = seconds;
 }
 
-// Only counts while the browser is really open: not during the fades or the pause menu.
+// Only counts while the browser is really open: not during the fades, the pause menu or with another window in front.
 void BrowserOverlay::UpdateSessionClock() {
 	const DWORD now = GetTickCount();
 	sessionMs_ += (std::min<DWORD>)(now - sessionLastTick_, 1000);
@@ -302,7 +305,7 @@ void BrowserOverlay::FinishClosing() {
 void BrowserOverlay::ReleaseGame() {
 	phase_ = Phase::Closed;
 	alarmCloseAt_ = 0;
-	suspendedByMenu_ = false;
+	suspended_ = false;
 
 	CPad::GetPad(0)->DisablePlayerControls = savedControls_;
 	CTheScripts::bDisplayHud = 1;
@@ -316,18 +319,26 @@ float BrowserOverlay::Blackness() const {
 	return 0.0f;
 }
 
-// The pause menu covers the browser: pages go quiet and, on return, everything is where it was.
-void BrowserOverlay::SyncPauseMenu() {
+void BrowserOverlay::Suspend() {
+	if (suspended_ || (phase_ != Phase::Open && phase_ != Phase::FadingBrowserOut)) return;
+	suspended_ = true;
+	client_.Send({ ef::EventType::Hide });
+}
+
+// With the pause menu or another window in front, nobody is using the browser: pages stop and,
+// on return, everything is where it was.
+void BrowserOverlay::SyncPresence() {
 	if (phase_ != Phase::Open && phase_ != Phase::FadingBrowserOut) return;
 
-	const bool menu = PauseMenuActive();
-	if (menu == suspendedByMenu_) return;
-	suspendedByMenu_ = menu;
+	const bool away = PauseMenuActive() || GetForegroundWindow() != window_;
+	if (away == suspended_) return;
 
-	if (menu) {
-		client_.Send({ ef::EventType::Hide });
+	if (away) {
+		Suspend();
 		return;
 	}
+	suspended_ = false;
+	sessionLastTick_ = GetTickCount();
 
 	// The resolution may have changed in the menu.
 	if (!EnsureHelper()) {
@@ -367,7 +378,7 @@ void BrowserOverlay::CheckForComputers() {
 }
 
 void BrowserOverlay::Update() {
-	SyncPauseMenu();
+	SyncPresence();
 	if (PauseMenuActive()) {
 		togglePending_ = false;
 		debugKeyPressed_ = false;
@@ -418,12 +429,12 @@ void BrowserOverlay::Update() {
 		return;
 	}
 
-	if (GetForegroundWindow() == window_) {
+	if (!suspended_) {
 		// The pad goes first: it moves the Windows cursor, and UpdateMouse reads that as if it were the mouse.
 		UpdatePad();
 		UpdateMouse();
+		UpdateSessionClock();
 	}
-	UpdateSessionClock();
 	LogStats();
 }
 

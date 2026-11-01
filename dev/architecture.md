@@ -149,7 +149,8 @@ Plugin code is split so that the harness can use part of it without the game.
 
 ## Non-obvious behavior
 
-- **Pause menu:** the game opens it when `CPad::NewKeyState.esc` goes down, so Escape must reach the game. While `m_bMenuActive` is set, the plugin passes all input through, stops drawing and mutes pages. On return it restarts the helper if the resolution changed.
+- **Pause menu:** the game opens it when `CPad::NewKeyState.esc` goes down, so Escape must reach the game. While `m_bMenuActive` is set, the plugin passes all input through and stops drawing.
+- **Player away:** with the pause menu or another window in front, `BrowserOverlay::SyncPresence` sends `Hide`, which mutes pages and freezes the tabs with `Page.setWebLifecycleState`, because `WasHidden` alone only stops painting. The session clock stops too. `WM_ACTIVATEAPP` also suspends, because the game may not run `Update` in the background. On return, `Show` carries on from where the pages were, and the helper restarts if the resolution changed. The shell isn't frozen, because it has to receive the end of a session.
 - **Fades:** the game fades to black and the browser appears. The browser darkens itself for its own fade, because it's drawn after the game's fade.
 - **Render state:** `OverlayRenderer::Draw` wraps everything in a state block, because RenderWare caches device state and must not see it change.
 - **Device loss:** the texture is in `D3DPOOL_DEFAULT`, so `OnDeviceLost` releases it and `OnDeviceReset` asks for a new frame.

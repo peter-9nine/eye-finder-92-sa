@@ -1024,6 +1024,48 @@ void TestSessions() {
 	Expect("session: leaving a computer takes its access away", pageColor() != kDarkPage);
 }
 
+// The pause menu or another window in front: pages stop until the player is back.
+void TestPagesWait() {
+	// freezetest.example: red counts timer ticks while hidden, and green those while visible.
+	constexpr POINT kPage = { 640, 400 };
+	const auto red = [&] { return (gLastShot[size_t(kPage.y) * gWidth + kPage.x] >> 16) & 0xFF; };
+	const auto green = [&] { return (gLastShot[size_t(kPage.y) * gWidth + kPage.x] >> 8) & 0xFF; };
+
+	GoTo("freezetest.example", 1500);
+	gClient.Send({ ef::EventType::Hide });
+	Run(4000);
+	gClient.Send({ ef::EventType::Show });
+	Run(200);
+	Shot("22_page_after_waiting");
+	// One tick can slip in before the freeze arrives. A page only hidden would have about four.
+	printf("page timer ticks while hidden: %u\n", red() / 8);
+	Expect("pages wait: timers stop while the player is away", red() / 8 <= 1);
+
+	const uint32_t greenBefore = green();
+	Run(600);
+	Shot("22b_page_running_again");
+	Expect("pages wait: timers and painting come back", green() != greenBefore);
+
+	// Loading a game from the pause menu ends the session with the pages stopped.
+	gClient.Send({ ef::EventType::Hide });
+	Run(300);
+	gClient.Send({ ef::EventType::EndSession });
+	gClient.Send({ ef::EventType::Hide });
+	Run(500);
+	gClient.Send({ ef::EventType::Show });
+	Run(700);
+	Shot("22c_session_ended_while_waiting");
+	ExpectPixel("pages wait: a session can end while they wait", kPage, kDesktopColor);
+
+	Click(kIconInternet);
+	Run(1000);
+	GoTo("freezetest.example", 1500);
+	const uint32_t greenNew = (Shot("22d_new_tab_after_waiting"), green());
+	Run(600);
+	Shot("22e_new_tab_running");
+	Expect("pages wait: a new tab runs normally afterwards", green() != greenNew);
+}
+
 void Measure(const char* name, int milliseconds, bool scroll) {
 	gStats = {};
 	const uint32_t paints = gClient.PaintCount();
@@ -1099,6 +1141,22 @@ int wmain(int argc, wchar_t** argv) {
 		std::filesystem::create_directories(unlistedSite, unlistedError);
 		std::ofstream(unlistedSite / L"site.json", std::ios::binary) << "{ \"title\": \"unlistedsearchtest\", \"listed\": false }";
 		std::ofstream(unlistedSite / L"index.html", std::ios::binary) << "<body>unlistedsearchtest</body>";
+	}
+
+	// A page that shows whether its timers ran while hidden, for TestPagesWait.
+	const std::filesystem::path freezeSite = std::filesystem::path(helper).parent_path().parent_path() / L"sites" / L"freezetest.example";
+	{
+		std::error_code freezeError;
+		std::filesystem::create_directories(freezeSite, freezeError);
+		std::ofstream(freezeSite / L"site.json", std::ios::binary) << "{ \"title\": \"freezetest\", \"listed\": false }";
+		std::ofstream(freezeSite / L"index.html", std::ios::binary) <<
+			"<!doctype html><body style='margin:0;height:100vh'><script>"
+			"let hidden = 0, visible = 0;"
+			"setInterval(() => {"
+			"  if (document.hidden) hidden++; else visible++;"
+			"  document.body.style.background = `rgb(${Math.min(hidden * 8, 255)},${visible * 4 % 256},128)`;"
+			"}, 100);"
+			"</script></body>";
 	}
 
 	const std::wstring mailPath = std::wstring(argv[3]) + L"\\session.json";
@@ -1457,6 +1515,7 @@ int wmain(int argc, wchar_t** argv) {
 
 	TestSiteFunctions();
 	TestSessions();
+	TestPagesWait();
 
 	// Log Off must ask to return to the game.
 	if (gClient.TakeCloseRequest()) {
@@ -1477,12 +1536,16 @@ int wmain(int argc, wchar_t** argv) {
 	TestLocations(std::filesystem::path(helper).parent_path().parent_path());
 	TestTypos();
 
+	// Quitting from the pause menu: the tab from TestPagesWait is still open, and stopped.
+	gClient.Send({ ef::EventType::Hide });
+	Run(300);
 	const DWORD stopStart = GetTickCount();
 	gClient.Stop();
 	printf("helper stopped in %lu ms\n", GetTickCount() - stopStart);
 
 	std::error_code cleanupError;
 	std::filesystem::remove_all(unlistedSite, cleanupError);
+	std::filesystem::remove_all(freezeSite, cleanupError);
 
 	gRenderer.Release();
 	gDevice->Release();
