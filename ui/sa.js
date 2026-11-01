@@ -89,6 +89,48 @@
   const values = () => getGameJson('/_game/values.json').then((data) => data.values);
   const get = (key, fallback = null) => values().then((all) => (key in all ? all[key] : fallback));
 
+  // Whether the real internet is on, the kind of computer in use, and an id that changes with each use.
+  const browser = () => getGameJson('/_game/browser.json');
+
+  // Every word must appear somewhere. A match in the address or title ranks above one in the text.
+  function rankMatches(list, query) {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+
+    const results = [];
+    for (const site of list) {
+      const name = (site.domain + ' ' + site.title).toLowerCase();
+      const details = (site.description + ' ' + site.keywords).toLowerCase();
+      const text = (site.text || '').toLowerCase();
+      if (!words.every((word) => name.includes(word) || details.includes(word) || text.includes(word))) continue;
+
+      let score = 0;
+      for (const word of words) score += name.includes(word) ? 4 : details.includes(word) ? 2 : 1;
+
+      // What to show under the result: its description or, without one, the text around the match.
+      let snippet = site.description;
+      if (!snippet) {
+        const at = text.indexOf(words[0]);
+        if (at >= 0) snippet = (at > 40 ? '...' : '') + site.text.slice(Math.max(at - 40, 0), at + 110).trim() + '...';
+      }
+      results.push({ domain: site.domain, url: site.url, title: site.title, description: snippet || '', score });
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  // Searches the public sites folder.
+  const searchSites = (query) => getGameJson('/_game/search.json').then((data) => rankMatches(data.sites, query));
+
+  // Searches the hidden folder, and every hidden site if the query is '*'. It's only allowed on a
+  // dark web computer, and returns null anywhere else.
+  async function searchHidden(query) {
+    const response = await fetch('/_game/hidden.json', { cache: 'no-store', headers: gameHeaders });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (query === '*') return data.sites.map(({ domain, url, title, description }) => ({ domain, url, title, description }));
+    return rankMatches(data.sites, query);
+  }
+
   function set(key, value) {
     return fetch('/_game/value/' + encodeURIComponent(key), {
       method: 'POST',
@@ -96,7 +138,7 @@
     }).then((response) => response.ok);
   }
 
-  window.sa = { runScript, sites, ads, fillAds, shuffle, state, values, get, set };
+  window.sa = { runScript, sites, ads, fillAds, shuffle, state, values, get, set, browser, searchSites, searchHidden };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => fillAds());
   else fillAds();

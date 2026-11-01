@@ -9,8 +9,16 @@
   h1 span { color: #cc0000; }
   h2 { margin: 18px 0 6px; font-size: 20px; color: #000080; }
   .tagline { margin: 0 0 20px; font-style: italic; }
-  form { margin-bottom: 18px; }
-  input { width: 380px; max-width: 70%; padding: 3px 5px; font: inherit; }
+  form { margin-bottom: 6px; }
+  #searchOptions { margin-bottom: 16px; font-size: 15px; }
+  #searchOptions label { margin: 0 6px; cursor: pointer; }
+  #searchOptions select { font: inherit; }
+  #engineChoice[hidden] { display: none; }
+  #results { width: 80%; max-width: 760px; margin: 0 auto 16px; text-align: left; }
+  #resultsTitle { margin: 0 0 6px; font-weight: bold; color: #000080; }
+  #resultsTitle:empty { display: none; }
+  #searchReal { margin-top: 12px; padding: 8px; background: #f4f4e8; border: 1px solid #c8c8b0; }
+  #query { width: 380px; max-width: 70%; padding: 3px 5px; font: inherit; }
   button { font: inherit; padding: 2px 12px; }
   hr { width: 80%; }
   #directory { width: 80%; max-width: 760px; margin: 0 auto; text-align: left; }
@@ -40,6 +48,26 @@
     <input id="query" autofocus spellcheck="false" autocomplete="off">
     <button>Search</button>
   </form>
+
+  <div id="searchOptions">
+    Look in:
+    <label><input type="radio" name="mode" value="local"> San Andreas</label>
+    <label><input type="radio" name="mode" value="real"> Real internet</label>
+    <span id="engineChoice">
+      using
+      <select id="engine" aria-label="Search engine"></select>
+    </span>
+  </div>
+
+  <div id="results" hidden>
+    <p id="resultsTitle"></p>
+    <div id="resultsList"></div>
+    <div id="searchReal">
+      Not what you wanted? <button id="searchRealButton" type="button"></button>
+      <span class="note">You'll be asked first.</span>
+    </div>
+  </div>
+
 
   <p><a href="https://mail.eyefinder.info/">EyeMail</a> - check your electronic mail</p>
 
@@ -124,11 +152,86 @@
 
     showDirectory();
 
-    document.getElementById('search').addEventListener('submit', (event) => {
-      event.preventDefault();
-      const query = document.getElementById('query').value.trim();
-      if (query) location.href = 'https://duckduckgo.com/?q=' + encodeURIComponent(query);
+    // --- Search ---
+    const ENGINES = {
+      duckduckgo: { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=' },
+      google: { name: 'Google', url: 'https://www.google.com/search?q=' },
+      bing: { name: 'Bing', url: 'https://www.bing.com/search?q=' },
+      yahoo: { name: 'Yahoo', url: 'https://search.yahoo.com/search?p=' },
+      brave: { name: 'Brave', url: 'https://search.brave.com/search?q=' },
+    };
+    const ENGINE_KEY = 'eyefinder.engine';
+    const byId = (id) => document.getElementById(id);
+
+    function savedEngine() {
+      try {
+        const saved = localStorage.getItem(ENGINE_KEY);
+        if (saved in ENGINES) return saved;
+      }
+      catch (error) {}
+      return 'duckduckgo';
+    }
+
+    function saveEngine(engine) {
+      try {
+        localStorage.setItem(ENGINE_KEY, engine);
+      }
+      catch (error) {}
+    }
+
+    for (const [id, engine] of Object.entries(ENGINES)) byId('engine').add(new Option(engine.name, id));
+    byId('engine').value = savedEngine();
+    byId('engine').addEventListener('change', () => {
+      saveEngine(byId('engine').value);
+      showRealButton();
     });
+
+    const currentMode = () => document.querySelector('input[name=mode]:checked').value;
+    const realSearchUrl = (query) => ENGINES[byId('engine').value].url + encodeURIComponent(query);
+
+    function setMode(mode) {
+      document.querySelector('input[name=mode][value=' + mode + ']').checked = true;
+      byId('engineChoice').hidden = mode !== 'real';
+    }
+    for (const radio of document.querySelectorAll('input[name=mode]')) radio.addEventListener('change', () => setMode(currentMode()));
+
+    function showRealButton() {
+      byId('searchRealButton').textContent = 'Search the real internet with ' + ENGINES[byId('engine').value].name;
+    }
+
+    async function showLocalResults(query) {
+      const found = await sa.searchSites(query);
+      byId('results').hidden = false;
+      byId('resultsTitle').textContent = found.length === 1 ? '1 site found for "' + query + '"'
+        : found.length ? found.length + ' sites found for "' + query + '"'
+        : 'Nothing in San Andreas matches "' + query + '"';
+      byId('resultsList').replaceChildren(...found.map(buildSiteRow));
+      showRealButton();
+      byId('searchRealButton').onclick = () => { location.href = realSearchUrl(query); };
+    }
+
+    // A real search navigates away, and in local mode the browser asks before connecting.
+    byId('search').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const query = byId('query').value.trim();
+      if (!query) return;
+      if (currentMode() === 'real') location.href = realSearchUrl(query);
+      else location.href = '/?in=local&q=' + encodeURIComponent(query);
+    });
+
+    // Local mode looks in San Andreas first. A search from the address bar arrives here too.
+    (async () => {
+      const params = new URLSearchParams(location.search);
+      const query = (params.get('q') || '').trim();
+      const { internet } = await sa.browser();
+      setMode(params.get('in') === 'local' || !internet ? 'local' : 'real');
+      showRealButton();
+
+      if (!query) return;
+      byId('query').value = query;
+      if (currentMode() === 'real') location.replace(realSearchUrl(query));
+      else showLocalResults(query);
+    })();
   </script>
 </body>
 </html>

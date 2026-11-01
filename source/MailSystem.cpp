@@ -224,11 +224,16 @@ void MailSystem::HandleBrowserOperations() {
 		if (slash == std::string::npos) continue;
 
 		const std::filesystem::path relative = std::filesystem::path(siteScript.substr(0, slash)) / L"scripts" / (siteScript.substr(slash + 1) + ".efs");
-		const std::filesystem::path systemFile = std::filesystem::path(PluginDirectory()) / L"system" / L"sites" / relative;
-		const std::filesystem::path publicFile = std::filesystem::path(PluginDirectory()) / L"sites" / relative;
-
-		std::error_code error;
-		RunCleoScript((std::filesystem::is_regular_file(systemFile, error) ? systemFile : publicFile).string());
+		const std::filesystem::path mod(PluginDirectory());
+		std::filesystem::path file = mod / L"sites" / relative;
+		for (const std::filesystem::path& candidate : { mod / L"system" / L"sites" / relative, mod / L"system" / L"sites" / L"hidden" / relative, mod / L"sites" / L"hidden" / relative }) {
+			std::error_code error;
+			if (std::filesystem::is_regular_file(candidate, error)) {
+				file = candidate;
+				break;
+			}
+		}
+		RunCleoScript(file.string());
 	}
 
 	if (changed) PublishUnreadCount();

@@ -53,6 +53,18 @@ std::set<std::string> gLocalDomains;  // Only written at startup, before any bro
 // The kind of computer being used. Some sites can only be reached from one kind, and they're
 // served on another thread, so it's atomic. The rest is only for the interface's timer.
 std::atomic<int32_t> gSessionType{ static_cast<int32_t>(ef::SessionType::Normal) };
+std::atomic<int64_t> gSessionId{ 0 };  // Changes each time a computer is used, so that pages can notice.
+
+// An easter egg: a misspelled EyeFinder address offers a way onto the dark web from any computer,
+// until that computer's session ends. Only that site can open it.
+constexpr char kBackdoorSite[] = "www.eyefnder.info";
+std::atomic<bool> gBackdoorOpen{ false };
+bool gCloseTabsOnSession = false;
+
+bool SessionReaches(int requiredSession) {
+	if (gSessionType.load(std::memory_order_relaxed) == requiredSession) return true;
+	return requiredSession == static_cast<int>(ef::SessionType::DarkWeb) && gBackdoorOpen.load(std::memory_order_relaxed);
+}
 int gSessionPrice = 0;
 int gSessionSeconds = 0;
 int gSessionCost = 0;
@@ -203,6 +215,9 @@ fs::path PublicSitesFolder() { return ModDirectory() / L"sites"; }
 fs::path SystemAdsFolder() { return SystemDirectory() / L"ads"; }
 fs::path PublicAdsFolder() { return ModDirectory() / L"ads"; }
 
+// Sites inside a hidden folder can only be reached in a dark web session.
+constexpr wchar_t kHiddenFolder[] = L"hidden";
+
 std::string ReadTextFile(const fs::path& path) {
 	std::ifstream file(path, std::ios::binary);
 	std::ostringstream contents;
@@ -320,6 +335,113 @@ std::string BuildSitesJson() {
 	return ListAsJson("sites", list);
 }
 
+// The visible text of a page, for searching. Good enough for simple pages, and it's only a search hint.
+std::string VisibleText(std::string html) {
+	std::string lower = html;
+	for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+	std::string text;
+	size_t position = 0;
+	while (position < html.size()) {
+		const size_t tag = html.find('<', position);
+		text.append(html, position, tag == std::string::npos ? std::string::npos : tag - position);
+		if (tag == std::string::npos) break;
+
+		size_t end = html.find('>', tag);
+		if (end == std::string::npos) break;
+
+		for (const char* block : { "script", "style" }) {
+			if (lower.compare(tag + 1, std::strlen(block), block) != 0) continue;
+			const size_t close = lower.find(std::string("</") + block, tag);
+			end = close == std::string::npos ? html.size() : lower.find('>', close);
+			if (end == std::string::npos) end = html.size();
+			break;
+		}
+		text += ' ';
+		position = end == html.size() ? end : end + 1;
+	}
+
+	std::string collapsed;
+	for (const char c : text) {
+		const bool space = std::isspace(static_cast<unsigned char>(c)) != 0;
+		if (space && (collapsed.empty() || collapsed.back() == ' ')) continue;
+		collapsed += space ? ' ' : c;
+	}
+
+	// Cut without splitting a UTF-8 character.
+	constexpr size_t kMaxText = 4000;
+	if (collapsed.size() > kMaxText) {
+		size_t cut = kMaxText;
+		while (cut > 0 && (static_cast<unsigned char>(collapsed[cut]) & 0xC0) == 0x80) --cut;
+		collapsed.resize(cut);
+	}
+	return collapsed;
+}
+
+CefRefPtr<CefDictionaryValue> SearchEntry(const fs::path& folder) {
+	const std::string domain = folder.filename().string();
+	CefRefPtr<CefDictionaryValue> details = ReadJsonObject(folder / L"site.json");
+	const std::string title = StringField(details, "title");
+
+	CefRefPtr<CefDictionaryValue> site = CefDictionaryValue::Create();
+	site->SetString("domain", domain);
+	site->SetString("url", "https://" + domain + "/");
+	site->SetString("title", title.empty() ? domain : title);
+	site->SetString("description", StringField(details, "description"));
+	site->SetString("keywords", StringField(details, "keywords"));
+	site->SetString("text", VisibleText(ReadTextFile(folder / L"index.html")));
+	return site;
+}
+
+// Everything search can find in the sites folder. It leaves out what the home page leaves out: sites
+// marked "listed": false, which promise to be reached only by typing their address, and restricted ones.
+std::string BuildSearchJson() {
+	CefRefPtr<CefListValue> list = CefListValue::Create();
+	size_t index = 0;
+
+	std::error_code error;
+	for (const auto& entry : fs::directory_iterator(PublicSitesFolder(), error)) {
+		if (!entry.is_directory() || entry.path().filename().string().find('.') == std::string::npos) continue;
+
+		std::error_code systemError;
+		if (fs::exists(SystemSitesFolder() / entry.path().filename(), systemError)) continue;
+		CefRefPtr<CefDictionaryValue> details = ReadJsonObject(entry.path() / L"site.json");
+		if (details && details->HasKey("listed") && details->GetType("listed") == VTYPE_BOOL && !details->GetBool("listed")) continue;
+		if (RequiredSession(details) >= 0) continue;
+
+		list->SetDictionary(index++, SearchEntry(entry.path()));
+	}
+	return ListAsJson("sites", list);
+}
+
+std::string BuildHiddenJson() {
+	CefRefPtr<CefListValue> list = CefListValue::Create();
+	size_t index = 0;
+	std::set<std::string> seen;
+
+	// The mod's go first: if two share a name, they win, as they do when they're served.
+	for (const fs::path& folder : { SystemSitesFolder() / kHiddenFolder, PublicSitesFolder() / kHiddenFolder }) {
+		std::error_code error;
+		for (const auto& entry : fs::directory_iterator(folder, error)) {
+			if (!entry.is_directory() || !seen.insert(entry.path().filename().string()).second) continue;
+			list->SetDictionary(index++, SearchEntry(entry.path()));
+		}
+	}
+	return ListAsJson("sites", list);
+}
+
+std::string BuildBrowserJson() {
+	const int type = gSessionType.load(std::memory_order_relaxed);
+	CefRefPtr<CefDictionaryValue> result = CefDictionaryValue::Create();
+	result->SetBool("internet", gInternetEnabled.load(std::memory_order_relaxed));
+	result->SetString("session", type == static_cast<int>(ef::SessionType::Police) ? "pd" : type == static_cast<int>(ef::SessionType::DarkWeb) ? "dark_web" : "normal");
+	result->SetString("sessionId", std::to_string(gSessionId.load(std::memory_order_relaxed)));
+
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(result);
+	return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+}
+
 bool IsSimpleFileName(const std::string& name) {
 	return !name.empty() && name.size() <= 128 && name != "." && name != ".." &&
 		name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.") == std::string::npos;
@@ -397,6 +519,17 @@ CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs:
 
 	if (path == "/_game/state.json") return JsonResponse(200, BuildGameStateJson());
 	if (path == "/_game/values.json") return JsonResponse(200, BuildValuesJson());
+	if (path == "/_game/browser.json") return JsonResponse(200, BuildBrowserJson());
+	if (path == "/_game/search.json") return JsonResponse(200, BuildSearchJson());
+	if (path == "/_game/hidden.json") {
+		// The list itself is a secret: it only exists on a dark web computer.
+		if (!SessionReaches(static_cast<int>(ef::SessionType::DarkWeb))) return JsonResponse(403, "{}");
+		return JsonResponse(200, BuildHiddenJson());
+	}
+	if (path == "/_game/backdoor" && domain == kBackdoorSite && request->GetMethod().ToString() == "POST") {
+		gBackdoorOpen.store(true, std::memory_order_relaxed);
+		return JsonResponse(200, "{}");
+	}
 
 	if (path.rfind("/_game/value/", 0) == 0 && request->GetMethod().ToString() == "POST") {
 		const std::string key = path.substr(13);
@@ -446,7 +579,7 @@ public:
 
 	CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString&, CefRefPtr<CefRequest> request) override {
 		// Checked first and for every request, so that links, scripts and the game API are all covered.
-		if (requiredSession_ >= 0 && gSessionType.load(std::memory_order_relaxed) != requiredSession_) return Forbidden();
+		if (requiredSession_ >= 0 && !SessionReaches(requiredSession_)) return Forbidden();
 
 		CefURLParts parts;
 		if (!CefParseURL(request->GetURL(), parts)) return nullptr;
@@ -842,6 +975,8 @@ void SendSessionToShell() {
 	details->SetInt("price", gSessionPrice);
 	details->SetInt("seconds", gSessionSeconds);
 	details->SetInt("cost", gSessionCost);
+	details->SetBool("closeTabs", gCloseTabsOnSession);
+	gCloseTabsOnSession = false;
 	CefRefPtr<CefValue> value = CefValue::Create();
 	value->SetDictionary(details);
 	CallShell("onSession", value);
@@ -1334,15 +1469,42 @@ private:
 	static void RegisterSitesIn(const fs::path& sites, bool isSystem) {
 		std::error_code error;
 		for (const auto& entry : fs::directory_iterator(sites, error)) {
-			if (!entry.is_directory()) continue;
-			const CefString domain = entry.path().filename().wstring();
+			if (!entry.is_directory() || entry.path().filename() == kHiddenFolder) continue;
+			RegisterSite(entry.path(), isSystem, RequiredSession(ReadJsonObject(entry.path() / L"site.json")));
+		}
+
+		std::error_code hiddenError;
+		for (const auto& entry : fs::directory_iterator(sites / kHiddenFolder, hiddenError)) {
+			if (entry.is_directory()) RegisterSite(entry.path(), false, static_cast<int>(ef::SessionType::DarkWeb));
+		}
+	}
+
+	static void RegisterSite(const fs::path& folder, bool isSystem, int requiredSession) {
+		// Other addresses for the same site, with and without www, for the mod's own sites only.
+		if (isSystem) {
+			CefRefPtr<CefDictionaryValue> details = ReadJsonObject(folder / L"site.json");
+			if (details && details->HasKey("aliases") && details->GetType("aliases") == VTYPE_LIST) {
+				CefRefPtr<CefListValue> aliases = details->GetList("aliases");
+				CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(folder, false, requiredSession);
+				for (size_t i = 0; i < aliases->GetSize(); ++i) {
+					const std::string alias = aliases->GetString(i).ToString();
+					for (const std::string& host : { alias, "www." + alias }) {
+						gLocalDomains.insert(host);
+						CefRegisterSchemeHandlerFactory("https", host, factory);
+						CefRegisterSchemeHandlerFactory("http", host, factory);
+					}
+				}
+			}
+		}
+
+		{
+			const CefString domain = folder.filename().wstring();
 			std::string lowered = domain.ToString();
 			for (char& c : lowered) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 			gLocalDomains.insert(lowered);
 
 			// Mail belongs only to the mod's site: a public one with that name gets no access.
-			const int requiredSession = RequiredSession(ReadJsonObject(entry.path() / L"site.json"));
-			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), isSystem && lowered == kMailDomain, requiredSession);
+			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(folder, isSystem && lowered == kMailDomain, requiredSession);
 			CefRegisterSchemeHandlerFactory("https", lowered, factory);
 			CefRegisterSchemeHandlerFactory("http", lowered, factory);
 		}
@@ -1560,6 +1722,9 @@ void HandleEvent(const ef::Event& event) {
 
 	case ef::EventType::Session:
 		gSessionType.store(event.a, std::memory_order_relaxed);
+		gSessionId.store(static_cast<int64_t>(GetTickCount64()), std::memory_order_relaxed);
+		// The way in doesn't outlast the session, and a tab left on the dark web mustn't stay open either.
+		gCloseTabsOnSession = gBackdoorOpen.exchange(false, std::memory_order_relaxed);
 		gSessionPrice = event.b;
 		gSessionSeconds = 0;
 		gSessionCost = 0;

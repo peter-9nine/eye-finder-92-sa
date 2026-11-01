@@ -24,6 +24,7 @@ Part of it loads a real website, so run it with an internet connection.
 - The pager, its memory and the keys file.
 - The on-screen keyboard, using simulated pad events.
 - Sessions, restricted sites and the recycle bin.
+- Search on both webs, the hidden folder, the engine choice, and the confirmation before a real search.
 - `locations.json` and the CEF check.
 - The public API, using a stand-in module named `EyeFinder92SA.asi`.
 - Performance, printed as frame rates and upload times.
@@ -40,7 +41,7 @@ tools\raw2png.ps1 "$root\test-output"
 
 ### When it fails after a layout change
 
-Its click coordinates and expected colors match `ui/shell.html`, `sites/www.eyefinder.info/tests.html` and `keyboard-tests.html` at 1280x720. If you move something in those, update the constants at the top of `tools/harness/main.cpp` and in its test functions. Check the captures first, to tell a moved button from a real bug.
+Its click coordinates and expected colors match `ui/shell.html`, `sites/www.eyefinder.info/index.html`, `tests.html`, `keyboard-tests.html` and `search-tests.html` at 1280x720. If you move something in those, update the constants at the top of `tools/harness/main.cpp` and in its test functions. Check the captures first, to tell a moved button from a real bug.
 
 ### Testing through DXVK
 
@@ -80,6 +81,11 @@ Run through the parts your change could affect. Remember to deploy first, becaus
 - [ ] Closing takes the money and shows the receipt.
 - [ ] With too little money, it takes what you have.
 - [ ] At a real computer, the prompt appears and names L1 or TAB, and changes when you switch.
+
+**Search**
+- [ ] The dark web's typed intro plays once in each session, and a key press skips it.
+- [ ] Searching on both webs works with the on-screen keyboard, and Go runs the search.
+- [ ] A real search asks first in local mode, and goes straight there after connecting.
 
 **Controller**
 - [ ] Cursor, scrolling, click, back, forward, reload and tabs.

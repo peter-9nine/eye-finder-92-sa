@@ -33,7 +33,7 @@ CEF must be updated with each release that has real internet access, because Chr
 - [ ] The [in-game checklist](testing.md#in-game-checklist) passes, on native Direct3D and DXVK.
 - [ ] **F8 is off.** With the default `Browser=F8`, players can open any session anywhere, including police and dark web. `package.ps1` doesn't include an ini, so add one with `Browser=None`.
 - [ ] **`locations.json` has real positions.** See [Known issues](known-issues.md).
-- [ ] Remove or decide on the test pages: `tests.html` and `keyboard-tests.html` ship with `www.eyefinder.info`.
+- [ ] Remove or decide on the test pages: `tests.html`, `keyboard-tests.html` and `search-tests.html` ship with `www.eyefinder.info`.
 - [ ] Try the package on a clean game: unzip it, confirm the "needs CEF" message appears, then follow `INSTALL_CEF.txt`.
 - [ ] `api/FAQ.md` and `api/EyeFinderApi.h` match what the release does.
 - [ ] If the API changed, `EF_API_VERSION` was raised, and nothing was removed or changed.

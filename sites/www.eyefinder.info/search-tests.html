@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search tests</title>
+</head>
+<body>
+<p>Search tests. The harness reads these results through shared values.</p>
+<pre id="log"></pre>
+<script src="/_game/sa.js"></script>
+<script>
+  const report = (key, value) => {
+    document.getElementById('log').textContent += key + ' = ' + value + '\n';
+    return sa.set('search.' + key, value);
+  };
+  const names = (found) => found.map((site) => site.domain).join(',');
+
+  (async () => {
+    const session = (await sa.browser()).session;
+    await report(session + '.byName', names(await sa.searchSites('binco')));
+    await report(session + '.byText', names(await sa.searchSites('xyzzy-no-such-text')) || 'none');
+
+    const hidden = await sa.searchHidden('sasquatch');
+    await report(session + '.hidden', hidden === null ? 'refused' : names(hidden));
+    const everything = await sa.searchHidden('*');
+    await report(session + '.hiddenAll', everything === null ? 'refused' : String(everything.length));
+    // A hidden site must never come up in a normal search, even by its own name.
+    await report(session + '.leak', names(await sa.searchSites('sasquatch')) || 'none');
+    // The harness adds this site. An unlisted site is only reached by typing its address.
+    await report(session + '.unlisted', names(await sa.searchSites('unlistedsearchtest')) || 'none');
+    await report(session + '.done', '1');
+  })();
+</script>
+</body>
+</html>

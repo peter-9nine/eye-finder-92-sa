@@ -92,6 +92,42 @@ Add `session` to a site's `site.json`:
 
 The session lives in `gSessionType`, an atomic, because sites are served on another thread.
 
+## The hidden folder
+
+A site inside a `hidden` folder, in `sites\hidden` or `system\sites\hidden`, can only be reached in a dark web session. `RegisterSitesIn` registers these with `SessionType::DarkWeb`, so they get the same check on every request as restricted sites, without needing `session` in their `site.json`.
+
+`/_game/hidden.json` lists them, and answers 403 outside a dark web session, because the list itself is a secret.
+
+## Search
+
+Both webs search the same way: `rankMatches` in `ui/sa.js` needs every word to appear, and ranks a match in the address or title above one in the description or keywords, and those above one in the page's text. The helper supplies the data, with the visible text of each site's `index.html` from `VisibleText`, cut to 4000 bytes.
+
+| | EyeFinder | Dark web |
+|---|---|---|
+| Page | `sites/www.eyefinder.info/index.html` | `sites/hidden.onion/index.html` |
+| Function | `sa.searchSites` | `sa.searchHidden` |
+| Endpoint | `/_game/search.json` | `/_game/hidden.json` |
+| Looks in | Public sites, except unlisted and restricted ones | The hidden folders |
+
+**EyeFinder** has a toggle between San Andreas and the real internet, and a choice of engine. The toggle starts on whichever matches the connection, from `sa.browser()`. The engine is remembered in the page's `localStorage`. A real search just navigates to the engine, so in local mode the usual confirmation appears: that's the only thing keeping it local, and it must stay that way.
+
+**The address bar** sends anything that isn't an address to the home page of the web that tab is on, as `?q=`, in `toUrl` in `ui/shell.html`. That page then applies its own rules, so the shell needs no search logic.
+
+## The dark web's intro
+
+`sites/hidden.onion/index.html` plays a typed prompt the first time it's opened in each session. `sa.browser()` returns a `sessionId`, which the helper changes on each `EventType::Session`, and the page keeps the last one it played for in `localStorage`. It checks again on `visibilitychange`, because a tab left open from the last session is already loaded. A key press or click skips it. It opens straight, with the commands to connect to the Area 69 server, from `CONNECTING`. Then the humor follows, from `CONFESSIONS`, `THOUGHTS` and `ANSWERS`.
+
+## The easter egg
+
+**Spoiler, so don't put this anywhere players read it.** A misspelled EyeFinder address lands on `sites/www.eyefnder.info`, a dull parked-domain page that asks "Did you mean www.eyefinder.info?". Answering "No" opens the dark web from any computer.
+
+- **The typos** are in `aliases` in that site's `site.json`, which only the mod's own sites can use. Each works with and without `www.`. To catch another typo, add it there.
+- **The way in** is `POST /_game/backdoor`, which only that site can call. It sets `gBackdoorOpen`, and `SessionReaches` then allows dark web sites and `/_game/hidden.json`.
+- **It ends with the session.** The next `EventType::Session` closes it, and tells the shell to close every tab through `closeTabs`.
+- **Nothing else changes.** The player's still in a normal session, so the desktop has no dark web icon, and the timer keeps charging.
+
+It stays out of search and the home page's list, because it's a mod site marked as unlisted.
+
 ## Recycle bin
 
 The window is in `ui/shell.html`, and `ui/recycle_bin.js` lists the files for each session type. Each file only needs a `name` and `text`, and its text is always inserted as text. While the bin is open, the tab is hidden through the layout message, because tabs are drawn over the shell.

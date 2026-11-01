@@ -38,7 +38,23 @@ Automatically. Every public site is listed, in a new random order on each visit,
 }
 ```
 
-Without it, the site is listed by its address. To keep a site secret, so that it's reached only by typing its address, add `"listed": false`.
+Without it, the site is listed by its address. To keep a site secret, so that it's reached only by typing its address, add `"listed": false`. It then stays out of both the list and search.
+
+### How do players find my site with search?
+
+The search box on the EyeFinder home page looks through every listed public site, in its address, title, description and the text of its `index.html`. An address bar search goes there too. A search only finds a site if all of its words match.
+
+Add `keywords` to your `site.json` for words that aren't on the page:
+
+```json
+{
+  "title": "Binco",
+  "description": "Discount clothes for the whole family.",
+  "keywords": "shirts pants fashion ganton"
+}
+```
+
+Text drawn inside images can't be found, so use `keywords` for image-based pages. Your own pages can search too, with `sa.searchSites('words')`, which returns the matches with the best first.
 
 ## Ads
 
@@ -384,7 +400,21 @@ Yes. Add `session` to your `site.json`, with `pd` for police computers or `dark_
 }
 ```
 
-From any other computer, every page and file of your site shows "Connection refused", even if the player types the address. The site is also left out of the home page's list, so tell players the address some other way, such as an email or a link on another restricted site.
+From any other computer, every page and file of your site shows "Connection refused", even if the player types the address. The site is also left out of the home page's list and search, so tell players the address some other way, such as an email or a link on another restricted site.
+
+### How do I put a site on the dark web?
+
+Put its folder inside a folder called `hidden`:
+
+```
+modloader\EyeFinder92SA\sites\hidden\www.mysite.onion\
+  index.html
+  site.json
+```
+
+It works like any other site, except that it can only be reached on a dark web computer, without needing `session` in its `site.json`. The dark web's home page, `hidden.onion`, searches this folder the same way EyeFinder searches the public one, and `keywords` works here too. Typing `ls` there lists everything in the folder, so nothing in it is truly secret from someone at a dark web computer.
+
+On a dark web computer, your own pages can search with `sa.searchHidden('words')`. Anywhere else it returns `null`.
 
 ### How do players install it?
 

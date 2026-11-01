@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>This domain is parked</title>
+<style>
+  /* The harness clicks "No", so it stays in a fixed place. */
+  body { margin: 0; background: #fff; color: #333; font: 16px "Times New Roman", Times, serif; }
+  h1 { position: absolute; left: 40px; top: 30px; margin: 0; font-size: 26px; font-weight: normal; }
+  #parked { position: absolute; left: 40px; top: 80px; margin: 0; color: #777; }
+  #question { position: absolute; left: 40px; top: 150px; margin: 0; font-size: 18px; }
+  #question b { color: #000080; }
+  a { position: absolute; top: 195px; color: #0000ee; font-size: 18px; }
+  #yes { left: 40px; }
+  #no { left: 100px; }
+  body.gone { background: #050505; }
+  body.gone > * { display: none; }
+  #reply { display: none; position: absolute; left: 40px; top: 30px; margin: 0; color: #39ff66; font: 17px Consolas, "Courier New", monospace; white-space: pre-wrap; }
+  body.gone #reply { display: block; }
+</style>
+</head>
+<body>
+  <h1>This domain is parked.</h1>
+  <p id="parked">It may be for sale. Contact your local domain registrar.</p>
+  <p id="question">Did you mean <b>www.eyefinder.info</b>?</p>
+  <a id="yes" href="https://www.eyefinder.info/">Yes</a>
+  <a id="no" href="#">No</a>
+  <p id="reply"></p>
+<script>
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  document.getElementById('no').addEventListener('click', async (event) => {
+    event.preventDefault();
+    document.body.className = 'gone';
+    const reply = document.getElementById('reply');
+    for (const line of ['no?', '\nno.', '\nnobody ever says no.', '\n\ncome in.']) {
+      reply.textContent += line;
+      await wait(650);
+    }
+    // Lets this computer reach the dark web until it's next used.
+    await fetch('/_game/backdoor', { method: 'POST', headers: { 'X-EyeFinder': '1' } });
+    location.href = 'https://hidden.onion/';
+  });
+</script>
+</body>
+</html>

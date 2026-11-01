@@ -79,6 +79,7 @@ Only the shell may use this channel. Four things enforce it, and all of them mus
 |---|---|---|---|
 | The mod's own | `sites/` | `system\sites` | Mirrored |
 | Public sites and ads | `public/` | `sites`, `ads` | Added to, because they belong to the user |
+| Dark web sites | `public/sites/hidden/` | `sites\hidden` | Added to. See [Sessions](sessions.md#the-hidden-folder) |
 
 On a name clash the mod's site wins, and only the mod's `mail.eyefinder.info` gets the mail API.
 

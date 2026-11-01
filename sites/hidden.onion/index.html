@@ -2,16 +2,294 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Hidden Service</title>
+<title>AREA 69</title>
 <style>
-  body { margin: 0; padding: 32px; font: 16px "Courier New", monospace; background: #050505; color: #3cff5a; }
-  h1 { margin: 0 0 18px; font-size: 26px; }
-  p { max-width: 60em; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: #050505; }
+  body { color: #39ff66; font: 17px/1.45 Consolas, "Courier New", monospace; text-shadow: 0 0 6px rgba(57, 255, 102, 0.45); }
+  #rain { position: fixed; inset: 0; width: 100%; height: 100%; }
+  /* The console keeps the rain readable behind it. */
+  #console { position: fixed; inset: 24px; padding: 18px 22px; overflow-y: auto; background: rgba(0, 8, 2, 0.82); border: 1px solid #1c7a35; box-shadow: 0 0 22px rgba(57, 255, 102, 0.25) inset; }
+  #output div { min-height: 1.45em; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .dim { color: #1fa743; }
+  .warn { color: #ffd23c; text-shadow: none; }
+  a { color: #a8ffbc; }
+  a:visited { color: #6fd98a; }
+  #searchForm { display: flex; margin: 0; }
+  #searchForm[hidden] { display: none; }
+  #prompt { flex: none; white-space: pre; }
+  #query { flex: 1; min-width: 0; padding: 0; background: none; border: 0; outline: 0; color: inherit; font: inherit; text-shadow: inherit; caret-color: #39ff66; }
+  .cursor { animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
 </style>
 </head>
 <body>
-  <h1>&gt; you shouldn't be here_</h1>
-  <p>This connection can't be traced. Nothing here is listed anywhere else.</p>
-  <p>There's nothing for sale yet. Check back later.</p>
+<canvas id="rain"></canvas>
+<div id="console">
+  <div id="output"></div>
+  <form id="searchForm" hidden>
+    <span id="prompt">anon@area69:~$ search </span>
+    <input id="query" spellcheck="false" autocomplete="off" aria-label="Search the hidden network">
+  </form>
+</div>
+<script src="/_game/sa.js"></script>
+<script>
+  const byId = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+  // --- The rain. A low frame rate saves the game's time, and suits it anyway. ---
+  const canvas = byId('rain');
+  const paint = canvas.getContext('2d');
+  const GLYPHS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789GROVE$#%';
+  const CELL = 16;
+  let drops = [];
+
+  function sizeRain() {
+    canvas.width = innerWidth;
+    canvas.height = innerHeight;
+    drops = Array.from({ length: Math.ceil(innerWidth / CELL) }, () => Math.floor(Math.random() * innerHeight / CELL));
+  }
+  sizeRain();
+  addEventListener('resize', sizeRain);
+
+  setInterval(() => {
+    if (document.hidden) return;
+    paint.fillStyle = 'rgba(5, 5, 5, 0.13)';
+    paint.fillRect(0, 0, canvas.width, canvas.height);
+    paint.fillStyle = '#00c43a';
+    paint.font = CELL + 'px Consolas, monospace';
+    drops.forEach((row, column) => {
+      paint.fillText(pick(GLYPHS), column * CELL, row * CELL);
+      drops[column] = row * CELL > canvas.height && Math.random() > 0.96 ? 0 : row + 1;
+    });
+  }, 70);
+
+  // --- The console ---
+  function print(text = '', className = '') {
+    const line = document.createElement('div');
+    line.textContent = text;
+    if (className) line.className = className;
+    byId('output').append(line);
+    byId('console').scrollTop = byId('console').scrollHeight;
+    return line;
+  }
+
+  // --- First use of this computer: connecting for real, then something they shouldn't have typed ---
+  const SERVER = 'a69xk2vq7d.onion';
+  const PROMPT = 'anon@area69:~$ ';
+  const CONNECTING = [
+    'Connecting to ' + SERVER + ' through 3 relays...',
+    'Warning: Permanently added \'' + SERVER + '\' (ED25519) to the list of known hosts.',
+    'Authenticated to ' + SERVER + ' using "publickey".',
+  ];
+  const CONFESSIONS = [
+    'how to hide a jetpack from my brother',
+    'is it a crime if the car was already on fire',
+    'why does big smoke need two number 9s AND a number 45',
+    'can a bicycle be evidence',
+    'best way to apologize to a whole gang',
+    'how many pineapples is too many for a grown man',
+    'lost my girlfriend in the desert. is that a warranty issue',
+    'what do i put on my resume if i only know how to do drive-bys',
+  ];
+  const THOUGHTS = [
+    'consulting three bored hackers',
+    'bribing the router with a number 9 large',
+    'pretending this connection is encrypted',
+    'rerouting through a pay phone in Fort Carson',
+    'asking the thing in the police basement',
+    'wiping fingerprints off the modem',
+    'waiting for your mom to get off the phone line',
+    'reversing the polarity, whatever that means',
+  ];
+  const ANSWERS = [
+    'answer: no. but we admire the question.',
+    'answer: ask again when you\'re not being followed.',
+    'answer: yes, unfortunately.',
+    'answer: that information costs more than your shoes.',
+    'answer: we\'ve forwarded this to your mother.',
+  ];
+
+  let introRunning = false;
+  let introSkipped = false;
+  const skipIntro = () => { introSkipped = true; };
+
+  async function pause(ms) {
+    for (let waited = 0; waited < ms && !introSkipped; waited += 40) await wait(40);
+  }
+
+  async function typeInto(line, text, speed) {
+    for (const char of text) {
+      if (introSkipped) break;
+      line.textContent += char;
+      await pause(speed + Math.random() * speed);
+    }
+  }
+
+  async function playIntro() {
+    introRunning = true;
+    introSkipped = false;
+    byId('output').textContent = '';
+    byId('searchForm').hidden = true;
+    addEventListener('keydown', skipIntro);
+    addEventListener('mousedown', skipIntro);
+
+    // First, played straight: what someone really types to reach a hidden server.
+    await pause(400);
+    await typeInto(print('ghost@localhost:~$ '), 'tor --quiet &', 24);
+    await pause(350);
+    print('[notice] Bootstrapped 100% (done): Done', 'dim');
+    await pause(450);
+
+    await typeInto(print('ghost@localhost:~$ '), 'torsocks ssh -p 6969 -i ~/.keys/ghost anon@' + SERVER, 24);
+    await pause(350);
+    for (const message of CONNECTING) {
+      print(message, 'dim');
+      await pause(380);
+    }
+    print();
+    print('AREA 69 // RESTRICTED NODE');
+    print('All activity on this system is monitored.', 'dim');
+    print('Last login: never', 'dim');
+    print();
+    await pause(900);
+
+    // Then the player, safely connected, asks it what they really came for.
+    await typeInto(print(PROMPT), pick(CONFESSIONS), 32);
+    await pause(450);
+    print();
+
+    // It has to look like it's thinking.
+    for (const thought of sa.shuffle(THOUGHTS).slice(0, 3)) {
+      const line = print(thought, 'dim');
+      for (let dots = 0; dots < 3; dots++) {
+        await pause(300);
+        line.textContent += '.';
+      }
+    }
+    print();
+    print(pick(ANSWERS), 'warn');
+    await pause(1100);
+
+    if (!introSkipped) {
+      print('connection established. they can\'t see you now.');
+      await pause(800);
+    }
+
+    removeEventListener('keydown', skipIntro);
+    removeEventListener('mousedown', skipIntro);
+    introRunning = false;
+  }
+
+  // --- The main page ---
+  function showHeader() {
+    byId('output').textContent = '';
+    print('    _   ___ ___   _      __ ___ ');
+    print('   /_\\ | _ \\ __| /_\\    / /| _ |');
+    print('  / _ \\|   / _| / _ \\  / _ \\_, /');
+    print(' /_/ \\_\\_|_\\___/_/ \\_\\ \\___//_/ ');
+    print();
+    print('This network isn\'t on any map. Type what you\'re looking for.', 'dim');
+    print('Commands: ls, help, clear', 'dim');
+    print();
+  }
+
+  function printResults(found) {
+    found.forEach((site, index) => {
+      const line = print('[' + String(index + 1).padStart(2, '0') + '] ');
+      const link = document.createElement('a');
+      link.href = site.url;
+      link.textContent = site.title;
+      line.append(link, ' ' + site.domain);
+      if (site.description) print('     ' + site.description, 'dim');
+    });
+  }
+
+  const NOTHING = [
+    '0 matches. Nothing here wants to be found by that.',
+    '0 matches. Whatever that is, it moved.',
+    '0 matches. Try not asking so loudly.',
+  ];
+
+  async function runCommand(text) {
+    print(byId('prompt').textContent + text);
+    const command = text.trim();
+
+    if (command === 'clear') {
+      showHeader();
+      return;
+    }
+    if (command === 'help') {
+      print('search <words>  just type them. it looks through everything hidden here.', 'dim');
+      print('ls              list everything hidden here.', 'dim');
+      print('clear           forget what you just saw.', 'dim');
+      print();
+      return;
+    }
+    if (!command) return;
+
+    const found = await sa.searchHidden(command === 'ls' ? '*' : command);
+    if (found === null) print('ACCESS DENIED. This terminal isn\'t one of ours.', 'warn');
+    else if (!found.length) print(command === 'ls' ? 'Nothing is hidden here yet.' : pick(NOTHING), 'warn');
+    else {
+      print(found.length + (found.length === 1 ? ' match' : ' matches'), 'dim');
+      printResults(found);
+    }
+    print();
+  }
+
+  function showMain() {
+    showHeader();
+    byId('searchForm').hidden = false;
+    byId('query').focus();
+  }
+
+  byId('searchForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const text = byId('query').value;
+    byId('query').value = '';
+    await runCommand(text);
+    byId('console').scrollTop = byId('console').scrollHeight;
+  });
+
+  // The console is what the player is typing into, wherever they click.
+  byId('console').addEventListener('click', (event) => {
+    if (event.target.tagName !== 'A' && !getSelection().toString() && !byId('searchForm').hidden) byId('query').focus();
+  });
+
+  // --- Once for each use of a computer ---
+  const INTRO_KEY = 'hidden.lastSession';
+
+  function needsIntro(sessionId) {
+    try {
+      if (localStorage.getItem(INTRO_KEY) === sessionId) return false;
+      localStorage.setItem(INTRO_KEY, sessionId);
+    }
+    catch (error) {}
+    return true;
+  }
+
+  async function start() {
+    const { sessionId } = await sa.browser();
+    if (needsIntro(sessionId)) await playIntro();
+    showMain();
+
+    const query = new URLSearchParams(location.search).get('q');
+    if (query) await runCommand(query);
+  }
+
+  // A tab left open stays loaded for the next visit, so check again when the computer comes back on.
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden || introRunning) return;
+    const { sessionId } = await sa.browser();
+    if (needsIntro(sessionId)) {
+      await playIntro();
+      showMain();
+    }
+  });
+
+  start();
+</script>
 </body>
 </html>

@@ -14,6 +14,8 @@
 
 **A site only some computers can reach:** add `"session": "pd"` or `"dark_web"` to its `site.json`.
 
+**A dark web site that its search can find:** put it in `public/sites/hidden/` to ship it as a sample, or `sites/hidden/` if it belongs to the mod.
+
 New site folders are only detected when the helper starts.
 
 ## Add a session type

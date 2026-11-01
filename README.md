@@ -39,6 +39,7 @@ There are two kinds of site:
 | Kind | In the game folder | In this repository | When the mod updates |
 |---|---|---|---|
 | Public sites and ads | `modloader\EyeFinder92SA\sites` and `ads` | Samples in `public` | Left alone |
+| Dark web sites, only reachable from a dark web computer | `modloader\EyeFinder92SA\sites\hidden` | Samples in `public\sites\hidden` | Left alone |
 | The mod's own sites | `modloader\EyeFinder92SA\system\sites` | `sites` | Replaced |
 
 To add a public site, create a folder named after its address, with normal web files in it. The EyeFinder home page lists it automatically, in a new random order on each visit, with ads between the sites. Restart the game to pick up a new folder.

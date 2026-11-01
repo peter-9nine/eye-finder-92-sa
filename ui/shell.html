@@ -347,7 +347,7 @@
 
   function applySession(details) {
     // Tabs from another kind of computer don't come along.
-    if (details.type !== session.type) {
+    if (details.type !== session.type || details.closeTabs) {
       closeKeyboard(false);
       closeBin();
       for (const tab of [...tabs]) closeTab(tab.id);
@@ -415,7 +415,10 @@
     const value = text.trim();
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
     if (/^[^\s]+\.[^\s]+$/.test(value)) return 'https://' + value;
-    return 'https://duckduckgo.com/?q=' + encodeURIComponent(value);
+    // A search goes to the home page of whichever web this tab is on, which decides where to look.
+    const tab = activeTab();
+    const site = tab && (tab.url || '').startsWith(DARK_WEB_SITE) ? DARK_WEB_SITE : HOME;
+    return site + '?q=' + encodeURIComponent(value);
   }
 
   function navigate() {

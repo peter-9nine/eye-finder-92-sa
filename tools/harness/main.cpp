@@ -612,6 +612,15 @@ void TestSessions() {
 		Run(500);
 	};
 	const auto pageColor = [] { return gLastShot[size_t(kPageTop.y) * gWidth + kPageTop.x] & 0xFFFFFF; };
+	// The dark web's page has moving rain and text, but the refused page is white.
+	const auto onDarkWebPage = [&] {
+		const uint32_t color = pageColor();
+		return ((color >> 16) & 0xFF) < 150 && (color & 0xFF) < 150;
+	};
+	const auto stored = [](const char* key) {
+		SyncMail();
+		return StoredValue(key);
+	};
 
 	// A normal session: a timer, and neither restricted site.
 	start(ef::SessionType::Normal, 10);
@@ -624,7 +633,61 @@ void TestSessions() {
 	Expect("session: the police site is refused from a normal computer", pageColor() != kPoliceHeader);
 	GoTo("hidden.onion", 1000);
 	Shot("20c_dark_web_refused");
-	Expect("session: the dark web is refused from a normal computer", pageColor() != kDarkPage);
+	Expect("session: the dark web is refused from a normal computer", !onDarkWebPage());
+	GoTo("sasquatchleaks.onion", 1000);
+	Shot("20c1_hidden_site_refused");
+	Expect("hidden folder: its sites are refused from a normal computer", !onDarkWebPage());
+
+	// Search on a normal computer: public sites only, and never the hidden list.
+	GoTo("www.eyefinder.info/search-tests.html", 1500);
+	RunWithMail(800);
+	Expect("search: a normal computer finds a public site", stored("search.normal.byName").find("www.binco.sa") != std::string::npos);
+	Expect("search: something that doesn't exist finds nothing", stored("search.normal.byText") == "none");
+	Expect("search: a normal computer can't search the hidden folder", stored("search.normal.hidden") == "refused" && stored("search.normal.hiddenAll") == "refused");
+	Expect("search: hidden sites don't appear in a normal search", stored("search.normal.leak") == "none");
+	Expect("search: unlisted sites don't appear in a search", stored("search.normal.unlisted") == "none");
+
+	// The home page's search, from the page and from the address bar.
+	GoTo("binco clothes", 1500);
+	Shot("20c1a_home_search_from_address_bar");
+	GoTo("www.eyefinder.info/?q=zzzznothing", 1200);
+	Shot("20c1b_home_search_no_results");
+
+	// Toggling to the real internet and searching asks first, because the browser is in local mode.
+	constexpr POINT kHomeRealToggle = { 678, 287 };
+	constexpr POINT kHomeQuery = { 595, 258 };
+	constexpr POINT kBesideAlert = { 200, 600 };  // On the page, which the warning hides and shades.
+	GoTo("www.eyefinder.info", 1200);
+	Click(kHomeRealToggle);
+	Run(200);
+	Shot("20c1c_home_real_toggle");
+
+	// Choosing another search engine.
+	constexpr POINT kHomeEngine = { 795, 289 };
+	constexpr POINT kHomeEngineGoogle = { 795, 327 };
+	Click(kHomeEngine);
+	Run(300);
+	Shot("20c1c2_home_engine_list");
+	Click(kHomeEngineGoogle);
+	Run(300);
+	Click(kHomeQuery);
+	TypeText("grove street");
+	gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_RETURN });
+	gClient.Send({ ef::EventType::Char, 0, 0, '\r' });
+	gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_RETURN });
+	Run(800);
+	Shot("20c1d_home_real_search_asks");
+	Expect("search: a real search in local mode asks first", (gLastShot[size_t(kBesideAlert.y) * gWidth + kBesideAlert.x] & 0xFFFFFF) != 0xFFFFFF);
+	Click(kStayLocal);
+	Run(400);
+	Shot("20c1e_home_stayed_local");
+	ExpectPixel("search: refusing keeps the page", kBesideAlert, 0xFFFFFF);
+
+	// The chosen engine is remembered on a new visit.
+	GoTo("www.eyefinder.info", 1200);
+	Click(kHomeRealToggle);
+	Run(200);
+	Shot("20c1f_home_engine_remembered");
 
 	// The recycle bin opens over the browser, and the tab comes back when it closes.
 	constexpr POINT kBinTitle = { 800, 133 };
@@ -640,6 +703,36 @@ void TestSessions() {
 	Run(300);
 	Shot("20c3_bin_closed");
 	Expect("recycle bin: it closes", (gLastShot[size_t(kBinTitle.y) * gWidth + kBinTitle.x] & 0xFFFFFF) != kBinTitleColor);
+
+	// The easter egg: a typo leads to a parked page, and answering "No" opens the dark web.
+	constexpr POINT kParkedNo = { 278, 308 };
+	constexpr POINT kParkedQuestion = { 300, 262 };
+	const auto parked = [&](const char* address, const char* shot) {
+		GoTo(address, 1000);
+		Shot(shot);
+		Expect("easter egg: a misspelled address reaches the parked page", !onDarkWebPage() && (gLastShot[size_t(kParkedQuestion.y) * gWidth + 180] & 0xFFFFFF) == 0xFFFFFF);
+	};
+	parked("eyefinder.com", "20c3a_easter_egg_alias");
+	parked("www.eyefnder.info", "20c3b_easter_egg_parked");
+	Click(kParkedNo);
+	Run(1200);
+	Shot("20c3c_easter_egg_reply");
+	Run(2200);
+	Shot("20c3d_easter_egg_dark_web");
+	Expect("easter egg: No opens the dark web from a normal computer", onDarkWebPage());
+	GoTo("sasquatchleaks.onion", 1000);
+	Shot("20c3e_easter_egg_hidden_site");
+	Expect("easter egg: hidden sites open while it lasts", onDarkWebPage());
+
+	// It ends with the session, and takes the tabs with it.
+	start(ef::SessionType::Normal, 10);
+	Shot("20c3f_easter_egg_closed");
+	ExpectPixel("easter egg: the next session closes its tabs", { 640, 360 }, kDesktopColor);
+	Click(kIconInternet);
+	Run(1000);
+	GoTo("sasquatchleaks.onion", 1000);
+	Shot("20c3g_easter_egg_gone");
+	Expect("easter egg: the next session can't reach the dark web", !onDarkWebPage());
 
 	// A police computer: its own desktop and browser, and no timer. Tabs don't come along.
 	start(ef::SessionType::Police, 0);
@@ -672,16 +765,58 @@ void TestSessions() {
 	ExpectPixel("session: the police icon opens its site", kPageTop, kPoliceHeader);
 	GoTo("hidden.onion", 1000);
 	Shot("20f_dark_web_refused_from_police");
-	Expect("session: the dark web is refused from a police computer", pageColor() != kDarkPage);
+	Expect("session: the dark web is refused from a police computer", !onDarkWebPage());
 
 	start(ef::SessionType::DarkWeb, 0);
 	Shot("20g_dark_web_desktop");
 	ExpectPixel("session: the dark web desktop has no timer", kInsideTimer, kDarkDesktop);
 	ExpectIconDrawn("dark web", { 72, 179 });
 	Click(kIconSecond);
+	Run(2500);
+	Shot("20h_dark_web_intro");
+	Expect("session: the dark web icon opens its site", onDarkWebPage());
+	Run(4000);
+	Shot("20h1_dark_web_intro_connecting");
+	Run(4500);
+	Shot("20h1b_dark_web_intro_humor");
+	Run(10000);
+	Shot("20h2_dark_web_main");
+
+	// The console searches the hidden folder.
+	constexpr POINT kDarkConsole = { 640, 400 };
+	Click(kDarkConsole);
+	TypeText("bigfoot");
+	gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_RETURN });
+	gClient.Send({ ef::EventType::Char, 0, 0, '\r' });
+	gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_RETURN });
+	Run(600);
+	TypeText("nothing like this");
+	gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_RETURN });
+	gClient.Send({ ef::EventType::Char, 0, 0, '\r' });
+	gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_RETURN });
+	Run(600);
+	Shot("20h3_dark_web_search");
+
+	// The intro only plays once for each use of a computer: reloading doesn't repeat it.
+	gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_F5 });
+	gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_F5 });
 	Run(1200);
-	Shot("20h_dark_web_site");
-	ExpectPixel("session: the dark web icon opens its site", kPageTop, kDarkPage);
+	Shot("20h4_dark_web_reloaded");
+
+	GoTo("sasquatchleaks.onion", 1000);
+	Shot("20h5_hidden_site");
+	Expect("hidden folder: its sites open on a dark web computer", onDarkWebPage());
+
+	GoTo("www.eyefinder.info/search-tests.html", 1500);
+	RunWithMail(800);
+	Expect("search: a dark web computer finds a hidden site", stored("search.dark_web.hidden") == "sasquatchleaks.onion");
+	Expect("search: the hidden list has every sample", stored("search.dark_web.hiddenAll") == "2");
+	Expect("search: public search still leaves hidden sites out", stored("search.dark_web.leak") == "none");
+
+	// A search typed in the address bar on a hidden page stays on the dark web.
+	GoTo("hidden.onion", 1000);
+	GoTo("ghost cars", 1500);
+	Shot("20h6_dark_web_address_search");
 
 	// Back on a normal computer, what was reachable before no longer is.
 	start(ef::SessionType::Normal, 0);
@@ -761,6 +896,15 @@ int wmain(int argc, wchar_t** argv) {
 	gStore.Add("Sweet", "Get back to Grove Street", "Yo CJ, we need you back here.", "Day 2, 19:30");
 	gStore.Add("<b>Script Kiddie</b>", "<img src=x onerror=alert(1)>", "<script>document.title='hacked'</script> Plain text only.", "Day 3, 02:15");
 	gStore.FlushSession();
+
+	// A site that search must not find. It has to exist before the helper starts.
+	const std::filesystem::path unlistedSite = std::filesystem::path(helper).parent_path().parent_path() / L"sites" / L"unlistedsearchtest.example";
+	{
+		std::error_code unlistedError;
+		std::filesystem::create_directories(unlistedSite, unlistedError);
+		std::ofstream(unlistedSite / L"site.json", std::ios::binary) << "{ \"title\": \"unlistedsearchtest\", \"listed\": false }";
+		std::ofstream(unlistedSite / L"index.html", std::ios::binary) << "<body>unlistedsearchtest</body>";
+	}
 
 	const std::wstring mailPath = std::wstring(argv[3]) + L"\\session.json";
 	if (!gClient.Start(helper, url, mailPath, gWidth, gHeight, error)) {
@@ -1113,6 +1257,9 @@ int wmain(int argc, wchar_t** argv) {
 	const DWORD stopStart = GetTickCount();
 	gClient.Stop();
 	printf("helper stopped in %lu ms\n", GetTickCount() - stopStart);
+
+	std::error_code cleanupError;
+	std::filesystem::remove_all(unlistedSite, cleanupError);
 
 	gRenderer.Release();
 	gDevice->Release();

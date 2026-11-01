@@ -7,7 +7,7 @@ Keep this list current: remove what gets fixed, and add what you find.
 - **Placeholder locations.** In `locations.json`, only the cyber cafe uses a known position. The three police stations and the dark web computer, at Zero's RC shop, are approximate and unverified. Stand at each real computer and correct them.
 - **F8 is on by default.** It lets players open any session anywhere. See the [release checklist](release.md#release-checklist).
 - **Chromium's sandbox is off.** See [Before shipping with real internet access](release.md#before-shipping-with-real-internet-access).
-- **Placeholder content.** The police and dark web sites and the recycle bin's files are placeholder text.
+- **Placeholder content.** The police site, the two sample sites in `public/sites/hidden` and the recycle bin's files are placeholder text.
 
 ## Bugs
 
@@ -21,4 +21,6 @@ Keep this list current: remove what gets fixed, and add what you find.
 - **A resolution change loses the open tabs,** because the helper restarts.
 - **Recycle bin contents are per session type,** not per computer, so all police stations share one.
 - **The recycle bin blanks the page behind it,** because tabs are drawn over the shell.
+- **Search only reads each site's `index.html`,** and its first 4000 bytes of text. It can't read text in images, or other pages of a site, so `keywords` in `site.json` is the way around that.
+- **The dark web's intro can replay** if the helper restarts during a session, such as after a resolution change, because that sends the session again.
 - **Mission locks do nothing yet.** `tools/import_old_pages.py` keeps old mission locks in `site.json` as `unlockAfter`, but nothing reads them.
