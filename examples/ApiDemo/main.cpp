@@ -4,7 +4,8 @@
 //   F10       email, announced on the pager
 //   F11       pager message, no email
 //   Shift+F11 help box text, no email
-#include <windows.h>
+//
+// It also registers a C++ function for a web page: open www.eyefinder.info/call-tests.html in the browser.#include <windows.h>
 
 #include <cstdio>
 #include <string>
@@ -48,6 +49,15 @@ std::string DemoScriptPath() {
 	return ModuleDirectory() + "\\system\\sites\\www.eyefinder.info\\scripts\\hello.efs";
 }
 
+// A page runs this with sa.call('apidemo_hello', 'some text'). It's on the game thread, so it can read the
+// game's memory. The answer only has to last until this returns, which a static string does.
+const char* __cdecl HelloFromCpp(const char* args, void*) {
+	const auto money = reinterpret_cast<volatile int*>(0xB7CE50);
+	static std::string answer;
+	answer = "C++ received \"" + std::string(args) + "\", and CJ has $" + std::to_string(*money);
+	return answer.c_str();
+}
+
 // Runs only if the test marker file exists: starts the demo script and checks that it gave CJ money.
 void SelfTest() {
 	while (eyefinder::GetUnreadCount() == 0) Sleep(200);  // A game is running once the inbox has mail.
@@ -80,6 +90,8 @@ DWORD WINAPI Run(void*) {
 	Sleep(10000);
 	Log("EyeFinder92SA installed: " + std::string(eyefinder::IsInstalled() ? "yes" : "no") +
 		", API version " + std::to_string(eyefinder::GetApiVersion()));
+
+	eyefinder::RegisterFunction("www.eyefinder.info", "apidemo_hello", HelloFromCpp);
 
 	int emails = 0;
 	bool f9 = false, f10 = false, f11 = false;

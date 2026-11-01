@@ -8,7 +8,7 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 10;
+constexpr uint32_t kProtocol = 11;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
@@ -18,7 +18,11 @@ constexpr uint32_t kSiteScriptNameSize = 200;
 constexpr uint32_t kValueOpRingSize = 16;
 constexpr uint32_t kValueKeySize = 64;
 constexpr uint32_t kValueTextSize = 1024;
-constexpr uint32_t kHeaderSize = 64 * 1024;
+constexpr uint32_t kSiteCallRingSize = 8;
+constexpr uint32_t kSiteCallDomainSize = 128;
+constexpr uint32_t kSiteCallNameSize = 64;
+constexpr uint32_t kSiteCallTextSize = 8192;
+constexpr uint32_t kHeaderSize = 256 * 1024;
 
 // The CEF build the helper is compiled against. Players download it separately, so the plugin
 // checks it. Keep it the same as tools\fetch-cef.ps1, which the harness verifies.
@@ -83,6 +87,23 @@ static_assert(sizeof(MailOp) == 8);
 struct ValueOp {
 	char key[kValueKeySize];
 	char value[kValueTextSize];
+};
+
+// A page asks a mod's C++ function to run: see EF_RegisterFunction. The helper has checked the name,
+// and the domain is the folder the request was served from, so a page can't choose it.
+struct SiteCall {
+	uint32_t id;
+	char domain[kSiteCallDomainSize];
+	char name[kSiteCallNameSize];
+	char args[kSiteCallTextSize];
+};
+
+enum class SiteCallStatus : uint32_t { Ok, NoFunction, Failed, TooLong };
+
+struct SiteCallResult {
+	uint32_t id;
+	SiteCallStatus status;
+	char text[kSiteCallTextSize];
 };
 
 // What pages can know about the game. The plugin publishes it several times a second.
@@ -152,6 +173,15 @@ struct Header {
 
 	// Someone failed the police site's C.R.A.S.H. password: wanted stars, then the browser closes.
 	std::atomic<uint32_t> alarm;
+
+	// Calls from pages to mods' functions (helper to plugin), and their answers (plugin to helper).
+	std::atomic<uint32_t> siteCallWrite;
+	std::atomic<uint32_t> siteCallRead;
+	SiteCall siteCalls[kSiteCallRingSize];
+
+	std::atomic<uint32_t> siteResultWrite;
+	std::atomic<uint32_t> siteResultRead;
+	SiteCallResult siteResults[kSiteCallRingSize];
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);
 static_assert(sizeof(Header) <= kHeaderSize);

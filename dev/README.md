@@ -9,7 +9,7 @@ If you're doing something else, you want one of these instead:
 | You want to | Read |
 |---|---|
 | Make a website for the in-game browser | [`api/FAQ.md`](../api/FAQ.md) |
-| Send emails or share values from your own mod | [`api/EyeFinderApi.h`](../api/EyeFinderApi.h), with a working example in [`examples/ApiDemo`](../examples/ApiDemo/main.cpp) |
+| Send emails, share values or run C++ from a web page, from your own mod | [`api/EyeFinderApi.h`](../api/EyeFinderApi.h), with a working example in [`examples/ApiDemo`](../examples/ApiDemo/main.cpp) |
 | Install or play the mod | [`README.md`](../README.md) |
 
 ## Where to go

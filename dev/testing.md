@@ -27,6 +27,7 @@ Part of it loads a real website, so run it with an internet connection.
 - Search on both webs, the hidden folder, the engine choice, and the confirmation before a real search.
 - `locations.json` and the CEF check.
 - The public API, using a stand-in module named `EyeFinder92SA.asi`.
+- C++ functions called from a page, through `sites/www.eyefinder.info/call-tests.html`, with the harness doing the plugin's part.
 - Performance, printed as frame rates and upload times.
 
 ### Look at the captures
@@ -106,6 +107,7 @@ Run through the parts your change could affect. Remember to deploy first, becaus
 **Other mods**
 - [ ] `tools\deploy.ps1 -Demo`, then F9, F10, F11 and Shift+F11.
 - [ ] A site's CLEO button runs its script.
+- [ ] With `-Demo` installed, the button on `www.eyefinder.info/call-tests.html` answers from C++ with CJ's real money.
 
 ## Checking local mode
 

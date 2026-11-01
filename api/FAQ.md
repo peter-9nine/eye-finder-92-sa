@@ -287,7 +287,124 @@ Yes. Run your script as a normal `.cs` in the `cleo` folder, have it check a val
 
 ### What can't pages do?
 
-They can't change the game directly: `sa.state()` is read-only. To change something, such as giving money, have your page run a CLEO script.
+They can't change the game directly: `sa.state()` is read-only. To change something, such as giving money, have your page run a CLEO script, or call a C++ function from your own mod. See [C++ functions](#c-functions).
+
+## C++ functions
+
+### Can my page run C++ code?
+
+Yes, through a mod of yours. The C++ doesn't run inside the page. Your mod registers a function, and your page asks the game to run it and waits for the answer.
+
+In your mod, using [`EyeFinderApi.h`](EyeFinderApi.h):
+
+```cpp
+#include <string>
+#include "plugin.h"
+#include "EyeFinderApi.h"
+
+const char* __cdecl BuyCar(const char* args, void* user) {
+    static std::string answer;
+    answer = "You asked for model " + std::string(args);
+    return answer.c_str();
+}
+
+class MyMod {
+public:
+    MyMod() {
+        plugin::Events::initRwEvent += [] {
+            eyefinder::RegisterFunction("www.mysite.sa", "buyCar", BuyCar);
+        };
+    }
+} myMod;
+```
+
+In your page:
+
+```html
+<script src="/_game/sa.js"></script>
+<script>
+  async function buy() {
+    try {
+      const answer = await sa.call('buyCar', '411');
+      document.getElementById('result').textContent = answer;
+    }
+    catch (error) {
+      document.getElementById('result').textContent = error.message;
+    }
+  }
+</script>
+```
+
+`examples/ApiDemo` in the project is a complete example.
+
+### Where does my `.asi` go?
+
+Anywhere in the `modloader` folder, because modloader loads every `.asi` it finds there. It can sit inside your site, or belong to a separate mod that happens to have a site too:
+
+```
+modloader\EyeFinder92SA\sites\www.mysite.sa\
+  index.html
+  mysite.asi
+```
+
+```
+modloader\MyBigMod\
+  mybigmod.asi
+modloader\EyeFinder92SA\sites\www.mysite.sa\
+  index.html
+```
+
+A mod can register functions for more than one site. Your function's site only has to match by name, so the `.asi` and the site don't need to know where the other one is.
+
+### When should I register?
+
+Once the game has started, not from `DllMain` or a global constructor, because EyeFinder92SA may load after your mod. `initRwEvent`, as above, works. If EyeFinder92SA isn't installed, `RegisterFunction` does nothing and returns 0, so your mod still runs without it.
+
+### What do my function's arguments and answer look like?
+
+Text, in both directions, up to 8191 bytes each.
+
+- **Sending:** a string is sent as it is, and anything else is sent as JSON, so `sa.call('buyCar', { model: 411 })` gives your function `{"model":411}`. Leaving out the argument gives it empty text.
+- **Answering:** `sa.call()` always gives your page text, and if your function returns `NULL`, it's empty. To answer with JSON, return JSON text and use `JSON.parse()` in your page.
+- **Keeping it valid:** your text is copied as soon as your function returns, so a `static std::string` as above is enough. Never return a pointer to a local variable.
+
+For anything larger than that, your function can write a file into your site's folder, for the page to load afterwards.
+
+### When does my function run?
+
+On the game thread, on the next frame. So your function can safely use the game: give money, spawn a car or read anything it likes. Two things follow from this:
+
+- **The game waits for your function.** Keep it short. Long work belongs on your own thread.
+- **The page waits too.** `sa.call()` takes at least until the next frame, and answers in the order calls arrive.
+
+If a page stores a value with `sa.set()` and then calls a function, the value is there when the function runs.
+
+### What happens when something goes wrong?
+
+The promise from `sa.call()` rejects, so use `try` and `catch`. `error.message` says which of these happened:
+
+| Problem | Likely cause |
+|---|---|
+| No mod has registered this function for this site | The `.asi` isn't installed or loaded, or the domain or name is misspelled. The name is case-sensitive |
+| The function name or its arguments are invalid or too long | A name with other characters, or arguments over 8191 bytes |
+| The answer is too long | Your function returned over 8191 bytes. It ran anyway |
+| The function failed | A C++ exception left your function. It's also written to `EyeFinder92SA.log` |
+| The game is too busy | Too many calls at once, even after several tries |
+| The game did not answer in time | No answer within 10 seconds, for example with the pause menu open. **Your function may still run afterwards** |
+
+Handling "the page got no answer" matters for things like payments: if your function must only run once, keep track of that in your mod, not in the page.
+
+### What can't a function's page do?
+
+- **Another site's functions are out of reach.** Each function belongs to one site, and the address of the page making the call decides which site is calling. A page can't claim to be another site.
+- **Real websites can't call anything,** and neither can other local sites, for the same reason they can't reach the rest of the game API.
+- **The call must come from a normal page or frame.** Calls from a service worker or an `<iframe srcdoc>` are refused.
+
+### Is this safe for players?
+
+**A site with an `.asi` is a mod,** and can do anything on the player's computer, like any other `.asi`. Say clearly that your site includes one, and players should only install it from people they trust.
+
+Your function's arguments can hold anything a player typed into your page, so check them as you would any other input before using them, and don't assume they fit in a fixed buffer. A crash in your function takes the whole game down, because it runs inside the game.
 
 ## CLEO scripts
 
@@ -366,7 +483,7 @@ if ((await sa.get('mysite.prize_claimed', 'no')) === 'no') {
 
 ### Can a real website run my scripts?
 
-No. Only pages in the site's own folder can start its scripts, and the browser blocks requests from other addresses.
+No. Only pages in the site's own folder can start its scripts, and requests from any other address are refused.
 
 ### Is this safe for players?
 

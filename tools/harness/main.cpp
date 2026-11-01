@@ -258,6 +258,10 @@ void Expect(const char* what, bool ok) {
 	}
 }
 
+// While TestSiteFunctions has the API double loaded: runs a function like MailSystem does.
+using RunSiteFunction = int(__cdecl*)(const char*, const char*, const char*, char*, int);
+RunSiteFunction gRunSiteFunction = nullptr;
+
 // What the plugin does every frame with the inbox operations.
 void SyncMail() {
 	ef::MailOp operation;
@@ -273,6 +277,15 @@ void SyncMail() {
 
 	std::string valueKey, valueText;
 	while (gClient.TakeValueOp(valueKey, valueText)) gStore.SetValue(valueKey, valueText);
+
+	static ef::SiteCall call;
+	static char result[ef::kSiteCallTextSize + 1];
+	while (gClient.TakeSiteCall(call)) {
+		const int outcome = gRunSiteFunction ? gRunSiteFunction(call.domain, call.name, call.args, result, sizeof(result)) : 1;
+		// -1 is an answer longer than the buffer, and this makes it longer than the protocol allows.
+		const std::string text = outcome < 0 ? std::string(ef::kSiteCallTextSize, 'x') : outcome == 0 ? std::string(result) : std::string();
+		gClient.SendSiteCallResult(call.id, static_cast<ef::SiteCallStatus>(outcome < 0 ? 0 : outcome), text);
+	}
 	gStore.FlushSession();
 }
 
@@ -408,6 +421,91 @@ void TestMailFiles() {
 std::string StoredValue(const char* key) {
 	const auto found = gStore.Values().find(key);
 	return found == gStore.Values().end() ? std::string() : found->second;
+}
+
+// The page's side of EF_RegisterFunction. See call-tests.html.
+int gSecretRuns = 0;
+
+const char* __cdecl SiteEcho(const char* args, void* user) {
+	static std::string answer;
+	answer = static_cast<const char*>(user) + std::string(args);
+	return answer.c_str();
+}
+const char* __cdecl SiteLength(const char* args, void*) {
+	static std::string answer;
+	answer = std::to_string(strlen(args));
+	return answer.c_str();
+}
+const char* __cdecl SiteNull(const char*, void*) { return nullptr; }
+const char* __cdecl SiteThrow(const char*, void*) { throw 1; }
+const char* __cdecl SiteHuge(const char*, void*) {
+	static const std::string answer(9000, 'x');
+	return answer.c_str();
+}
+// Calling back into the API from a function must not deadlock on its lock.
+const char* __cdecl SiteUsesApi(const char*, void*) {
+	eyefinder::SetValueInt("call.fromFunction", 7);
+	static std::string answer;
+	answer = std::to_string(eyefinder::GetValueInt("call.fromFunction", 0));
+	return answer.c_str();
+}
+const char* __cdecl SiteSecret(const char*, void*) {
+	++gSecretRuns;
+	return "secret";
+}
+
+void TestSiteFunctions() {
+	HMODULE module = LoadLibraryW(L"EyeFinder92SA.asi");
+	Expect("site functions: load the module", module != nullptr);
+	if (!module) return;
+	gRunSiteFunction = reinterpret_cast<RunSiteFunction>(GetProcAddress(module, "EF_Test_RunSiteFunction"));
+
+	constexpr char kSite[] = "www.eyefinder.info";
+	Expect("site functions: registering", eyefinder::RegisterFunction(kSite, "echo", SiteEcho, const_cast<char*>("echo:")) == 1);
+	Expect("site functions: a domain isn't case-sensitive", eyefinder::RegisterFunction("WWW.EyeFinder.Info", "length", SiteLength) == 1);
+	eyefinder::RegisterFunction(kSite, "nothing", SiteNull);
+	eyefinder::RegisterFunction(kSite, "throws", SiteThrow);
+	eyefinder::RegisterFunction(kSite, "huge", SiteHuge);
+	eyefinder::RegisterFunction(kSite, "usesApi", SiteUsesApi);
+	eyefinder::RegisterFunction(kSite, "removed", SiteSecret);
+	Expect("site functions: removing", eyefinder::RegisterFunction(kSite, "removed", nullptr) == 1);
+	eyefinder::RegisterFunction("www.binco.sa", "secret", SiteSecret);
+	Expect("site functions: a bad name is refused", eyefinder::RegisterFunction(kSite, "bad name", SiteNull) == 0 && eyefinder::RegisterFunction(kSite, "", SiteNull) == 0);
+	Expect("site functions: a missing domain is refused", eyefinder::RegisterFunction(nullptr, "x", SiteNull) == 0 && eyefinder::RegisterFunction("", "x", SiteNull) == 0);
+
+	GoTo("www.eyefinder.info/call-tests.html", 300);
+	const DWORD start = GetTickCount();
+	while (StoredValue("call.done").empty() && GetTickCount() - start < 15000) RunWithMail(100);
+	RunWithMail(300);
+	Shot("19c_site_functions");
+
+	const auto answer = [](const char* key) { return StoredValue((std::string("call.") + key).c_str()); };
+	Expect("site functions: the page finished", answer("done") == "1");
+	Expect("site functions: text goes both ways", answer("text") == "echo:hello");
+	Expect("site functions: an object arrives as JSON", answer("object") == "echo:{\"a\":1}");
+	Expect("site functions: UTF-8 survives", answer("utf8") == "echo:\xC3\xB1" "and\xC3\xBA");
+	Expect("site functions: no arguments is empty text", answer("noArgs") == "echo:");
+	Expect("site functions: a null answer is empty text", answer("nothing") == "(empty)");
+	Expect("site functions: the longest arguments arrive whole", answer("longest") == "8191");
+	Expect("site functions: longer arguments are refused", answer("tooLongArgs") == "rejected");
+	Expect("site functions: a long answer is refused", answer("huge") == "rejected");
+	Expect("site functions: an exception reaches the page", answer("throws") == "rejected");
+	Expect("site functions: an unknown function is refused", answer("missing") == "rejected");
+	Expect("site functions: a removed function is refused", answer("removed") == "rejected");
+	Expect("site functions: a bad name is refused by the helper", answer("badName") == "rejected");
+	Expect("site functions: a function can use the API", answer("usesApi") == "7");
+	Expect("site functions: many calls at once all answer", answer("many") == "40");
+	Expect("site functions: another site's function can't be called", answer("otherSite") == "rejected");
+	Expect("site functions: another site can't be reached across origins", answer("crossOrigin") == "blocked");
+	Expect("site functions: another site's function never ran", gSecretRuns == 0);
+	Expect("cross-site: another origin can't store a value", answer("crossValue").empty());
+	std::string crossScript;
+	Expect("cross-site: another origin can't start a script", !gClient.TakeSiteScript(crossScript));
+	Expect("cross-site: another origin can't set off the alarm", !gClient.TakeAlarm());
+
+	gRunSiteFunction = nullptr;
+	FreeLibrary(module);
+	Expect("site functions: without the mod, nothing is registered", eyefinder::RegisterFunction(kSite, "x", SiteNull) == 0);
 }
 
 void TestKeyboard() {
@@ -1357,6 +1455,7 @@ int wmain(int argc, wchar_t** argv) {
 		++gFailures;
 	}
 
+	TestSiteFunctions();
 	TestSessions();
 
 	// Log Off must ask to return to the game.

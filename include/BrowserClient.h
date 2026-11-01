@@ -35,6 +35,8 @@ public:
 	bool TakeMailOp(ef::MailOp& operation);
 	bool TakeSiteScript(std::string& name);
 	bool TakeValueOp(std::string& key, std::string& value);
+	bool TakeSiteCall(ef::SiteCall& call);
+	void SendSiteCallResult(uint32_t id, ef::SiteCallStatus status, const std::string& text);
 	void PublishGameState(const ef::GameStateData& state);
 
 private:

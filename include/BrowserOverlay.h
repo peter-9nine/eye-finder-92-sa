@@ -38,6 +38,8 @@ public:
 	bool TakeMailOp(ef::MailOp& operation) { return client_.TakeMailOp(operation); }
 	bool TakeSiteScript(std::string& name) { return client_.TakeSiteScript(name); }
 	bool TakeValueOp(std::string& key, std::string& value) { return client_.TakeValueOp(key, value); }
+	bool TakeSiteCall(ef::SiteCall& call) { return client_.TakeSiteCall(call); }
+	void SendSiteCallResult(uint32_t id, ef::SiteCallStatus status, const std::string& text) { client_.SendSiteCallResult(id, status, text); }
 	void PublishGameState(const ef::GameStateData& state) { client_.PublishGameState(state); }
 
 private:

@@ -215,6 +215,38 @@ bool BrowserClient::TakeValueOp(std::string& key, std::string& value) {
 	return true;
 }
 
+bool BrowserClient::TakeSiteCall(ef::SiteCall& call) {
+	if (!header_) return false;
+
+	const uint32_t read = header_->siteCallRead.load(std::memory_order_relaxed);
+	if (read == header_->siteCallWrite.load(std::memory_order_acquire)) return false;
+
+	call = header_->siteCalls[read % ef::kSiteCallRingSize];
+	call.domain[ef::kSiteCallDomainSize - 1] = '\0';
+	call.name[ef::kSiteCallNameSize - 1] = '\0';
+	call.args[ef::kSiteCallTextSize - 1] = '\0';
+	header_->siteCallRead.store(read + 1, std::memory_order_release);
+	return true;
+}
+
+void BrowserClient::SendSiteCallResult(uint32_t id, ef::SiteCallStatus status, const std::string& text) {
+	if (!header_) return;
+
+	const uint32_t write = header_->siteResultWrite.load(std::memory_order_relaxed);
+	const uint32_t read = header_->siteResultRead.load(std::memory_order_acquire);
+	if (write - read >= ef::kSiteCallRingSize) return;  // Never block the game: the page's call times out instead.
+
+	ef::SiteCallResult& entry = header_->siteResults[write % ef::kSiteCallRingSize];
+	const bool fits = text.size() < ef::kSiteCallTextSize;
+	entry.id = id;
+	entry.status = fits ? status : ef::SiteCallStatus::TooLong;
+	const size_t length = fits ? text.size() : 0;
+	std::memcpy(entry.text, text.data(), length);
+	entry.text[length] = '\0';
+	header_->siteResultWrite.store(write + 1, std::memory_order_release);
+	if (wake_) SetEvent(wake_);
+}
+
 void BrowserClient::PublishGameState(const ef::GameStateData& state) {
 	if (!header_) return;
 

@@ -37,4 +37,10 @@ std::map<std::string, std::string> DrainValueChanges();
 void ReplaceValues(const std::map<std::string, std::string>& values);
 void SetValueFromGame(const std::string& key, const std::string& value);
 
+// Functions that mods register for their web pages. These values match ef::SiteCallStatus.
+enum class FunctionResult { Ok, NoFunction, Failed };
+
+// Only from the game thread, because the function may use the game.
+FunctionResult RunSiteFunction(const char* domain, const char* name, const char* args, std::string& result);
+
 }  // namespace api

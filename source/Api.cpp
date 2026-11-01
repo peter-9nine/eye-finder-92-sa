@@ -1,7 +1,9 @@
 // The public API for other mods: see api/EyeFinderApi.h.
 #include "ApiQueue.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -19,6 +21,16 @@ constexpr size_t kMaxPathLength = 260;
 constexpr size_t kMaxKeyLength = 63;
 constexpr size_t kMaxValueLength = 1023;
 constexpr size_t kMaxValues = 1024;
+constexpr size_t kMaxFunctions = 1024;
+constexpr size_t kMaxDomainLength = 127;  // Matches ef::kSiteCallDomainSize.
+constexpr size_t kMaxFunctionNameLength = 63;  // Matches ef::kSiteCallNameSize.
+
+using SiteFunction = const char*(__cdecl*)(const char* args, void* user);
+
+struct RegisteredFunction {
+	SiteFunction function = nullptr;
+	void* user = nullptr;
+};
 
 std::mutex gMutex;
 std::vector<api::Request> gPending;
@@ -26,6 +38,14 @@ std::atomic<int> gUnread{ 0 };
 std::map<std::string, int> gReplies;
 std::map<std::string, std::string> gValues;
 std::map<std::string, std::string> gValueChanges;
+std::map<std::string, RegisteredFunction> gFunctions;
+
+// Web addresses aren't case-sensitive, but a site's folder or a mod's text might not be lowercase.
+std::string FunctionKey(const std::string& domain, const std::string& name) {
+	std::string key = domain;
+	std::transform(key.begin(), key.end(), key.begin(), [](unsigned char letter) { return static_cast<char>(std::tolower(letter)); });
+	return key + "/" + name;
+}
 
 std::string Copy(const char* text, size_t limit) {
 	if (!text) return {};
@@ -91,8 +111,32 @@ void api::SetValueFromGame(const std::string& key, const std::string& value) {
 	gValues[key] = value;
 }
 
+api::FunctionResult api::RunSiteFunction(const char* domain, const char* name, const char* args, std::string& result) {
+	result.clear();
+	RegisteredFunction entry;
+	try {
+		std::lock_guard lock(gMutex);
+		const auto found = gFunctions.find(FunctionKey(domain, name));
+		if (found == gFunctions.end()) return FunctionResult::NoFunction;
+		entry = found->second;
+	}
+	catch (...) {
+		return FunctionResult::Failed;
+	}
+
+	// Without the lock, because the function can use this API.
+	try {
+		const char* text = entry.function(args, entry.user);
+		if (text) result = text;
+		return FunctionResult::Ok;
+	}
+	catch (...) {
+		return FunctionResult::Failed;
+	}
+}
+
 EF_EXPORT int __cdecl EF_GetApiVersion() {
-	return 3;
+	return 4;
 }
 
 EF_EXPORT int __cdecl EF_SendEmail(const char* from, const char* subject, const char* body, int notify) {
@@ -244,12 +288,45 @@ EF_EXPORT int __cdecl EF_GetValueInt(const char* key, int defaultValue) {
 	}
 }
 
+EF_EXPORT int __cdecl EF_RegisterFunction(const char* domain, const char* name, SiteFunction function, void* user) {
+	if (!domain || !name) return 0;
+	try {
+		const std::string site = Copy(domain, kMaxDomainLength + 1);
+		const std::string functionName = Copy(name, kMaxFunctionNameLength + 1);
+		const bool valid = !site.empty() && site.size() <= kMaxDomainLength &&
+			!functionName.empty() && functionName.size() <= kMaxFunctionNameLength &&
+			functionName.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == std::string::npos;
+		if (!valid) return 0;
+
+		const std::string key = FunctionKey(site, functionName);
+		std::lock_guard lock(gMutex);
+		if (!function) {
+			gFunctions.erase(key);
+			return 1;
+		}
+		if (gFunctions.size() >= kMaxFunctions && gFunctions.count(key) == 0) return 0;
+		gFunctions[key] = { function, user };
+		return 1;
+	}
+	catch (...) {
+		return 0;
+	}
+}
+
 EF_EXPORT int __cdecl EF_GetUnreadCount() {
 	return gUnread.load(std::memory_order_relaxed);
 }
 
 #ifdef EF_API_TEST
 // Only in the harness's test double.
+EF_EXPORT int __cdecl EF_Test_RunSiteFunction(const char* domain, const char* name, const char* args, char* buffer, int bufferSize) {
+	std::string result;
+	const api::FunctionResult outcome = api::RunSiteFunction(domain, name, args, result);
+	// The harness tells an answer too long for the page apart by its length, as the plugin does.
+	strncpy_s(buffer, static_cast<size_t>(bufferSize), result.c_str(), _TRUNCATE);
+	return result.size() >= static_cast<size_t>(bufferSize) ? -1 : static_cast<int>(outcome);
+}
+
 EF_EXPORT int __cdecl EF_Test_PendingCount() {
 	std::lock_guard lock(gMutex);
 	return static_cast<int>(gPending.size());

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>C++ function tests</title>
+</head>
+<body style="font:16px Tahoma,sans-serif;margin:20px">
+<h2>C++ function tests</h2>
+<p>Pages calling C++ functions through <code>sa.call()</code>. The harness reads these results through shared values.</p>
+<p>With <code>tools\deploy.ps1 -Demo</code> installed: <input id="demoText" value="hello from the page"> <button id="demoButton">Call the demo mod</button> <span id="demoResult"></span></p>
+<pre id="log"></pre>
+<script src="/_game/sa.js"></script>
+<script>
+  const report = (key, value) => {
+    document.getElementById('log').textContent += key + ' = ' + value + '\n';
+    return sa.set('call.' + key, value);
+  };
+  const outcome = (promise) => promise.catch(() => 'rejected');
+
+  document.getElementById('demoButton').onclick = async () => {
+    const result = document.getElementById('demoResult');
+    try {
+      result.textContent = await sa.call('apidemo_hello', document.getElementById('demoText').value);
+    }
+    catch (error) {
+      result.textContent = error.message;
+    }
+  };
+
+  (async () => {
+    await report('text', await outcome(sa.call('echo', 'hello')));
+    await report('object', await outcome(sa.call('echo', { a: 1 })));
+    await report('utf8', await outcome(sa.call('echo', 'ñandú')));
+    await report('noArgs', await outcome(sa.call('echo')));
+    await report('nothing', (await outcome(sa.call('nothing'))) || '(empty)');
+    await report('longest', await outcome(sa.call('length', 'x'.repeat(8191))));
+    await report('tooLongArgs', await outcome(sa.call('length', 'x'.repeat(8192))));
+    await report('huge', await outcome(sa.call('huge')));
+    await report('throws', await outcome(sa.call('throws')));
+    await report('missing', await outcome(sa.call('noSuchFunction')));
+    await report('removed', await outcome(sa.call('removed')));
+    await report('badName', await outcome(sa.call('../echo')));
+    await report('usesApi', await outcome(sa.call('usesApi')));
+
+    // More at once than the rings hold.
+    const many = await Promise.all(Array.from({ length: 40 }, (_, index) => outcome(sa.call('echo', String(index)))));
+    await report('many', String(many.filter((text, index) => text === 'echo:' + index).length));
+
+    // The harness registers this one for www.binco.sa, so this site can't call it.
+    await report('otherSite', await outcome(sa.call('secret')));
+    // And this site's pages can't reach it directly. CORS only hides the answer: these requests do arrive,
+    // so the helper has to refuse them, and the harness checks that the function never ran.
+    const crossOrigin = await fetch('https://www.binco.sa/_game/call/secret', { method: 'POST', headers: { 'X-EyeFinder': '1' } })
+      .then(() => 'ALLOWED').catch(() => 'blocked');
+    await report('crossOrigin', crossOrigin);
+    await fetch('https://www.binco.sa/_game/call/secret', { method: 'POST', mode: 'no-cors' }).catch(() => {});
+
+    // The same goes for the older routes. The harness checks that none of these had any effect.
+    const crossSite = { method: 'POST', headers: { 'X-EyeFinder': '1', 'X-EyeFinder-Value': 'hacked' } };
+    await fetch('https://www.binco.sa/_game/value/call.crossValue', crossSite).catch(() => {});
+    await fetch('https://mail.eyefinder.info/_game/script/hello', crossSite).catch(() => {});
+    await fetch('https://network.sapd.sa/_game/alarm', crossSite).catch(() => {});
+
+    await report('done', '1');
+  })();
+</script>
+</body>
+</html>

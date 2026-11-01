@@ -236,6 +236,15 @@ void MailSystem::HandleBrowserOperations() {
 		RunCleoScript(file.string());
 	}
 
+	// A page calling a mod's C++ function. After the values, so a page can store one and then call.
+	static ef::SiteCall call;  // Large, and only ever used on the game thread.
+	while (overlay_->TakeSiteCall(call)) {
+		std::string result;
+		const api::FunctionResult outcome = api::RunSiteFunction(call.domain, call.name, call.args, result);
+		if (outcome == api::FunctionResult::Failed) Log(std::string("Site function failed with an exception: ") + call.domain + "/" + call.name);
+		overlay_->SendSiteCallResult(call.id, static_cast<ef::SiteCallStatus>(outcome), result);
+	}
+
 	if (changed) PublishUnreadCount();
 }
 

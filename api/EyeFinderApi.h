@@ -1,4 +1,4 @@
-// EyeFinder92SA public API, version 3. Copy this file into your mod.
+// EyeFinder92SA public API, version 4. Copy this file into your mod.
 //
 // Every function is safe to call from any thread and at any time. Calls made before a
 // game is running wait in a queue. Text is UTF-8. If EyeFinder92SA isn't installed,
@@ -12,7 +12,7 @@
 #pragma once
 #include <windows.h>
 
-#define EF_API_VERSION 3
+#define EF_API_VERSION 4
 
 // How the player finds out about a new email.
 #define EF_NOTIFY_NONE 0   // Only the unread count on the computer changes.
@@ -91,6 +91,29 @@ typedef int(__cdecl* EF_GetValue_t)(const char* key, char* buffer, int bufferSiz
 // Returns the value as a number, or defaultValue if it doesn't exist or isn't a number.
 typedef int(__cdecl* EF_GetValueInt_t)(const char* key, int defaultValue);
 
+// Added in API version 4.
+//
+// Lets a web page run a C++ function in your mod: the page calls sa.call('name', args), and gets
+// back what the function returns. See "Can my page run C++ code?" in FAQ.md.
+//
+// const char* __cdecl function(const char* args, void* user)
+// - It runs on the game thread, at the start of a frame, so it can use the game. Return quickly,
+//   because the game waits for it.
+// - args is the text the page sent, up to 8191 bytes. It's never NULL. Treat it as untrusted input,
+//   because it can hold whatever a player typed into your page.
+// - user is the pointer you gave when registering.
+// - Return text of up to 8191 bytes, or NULL for an empty answer. It's copied as soon as the function
+//   returns, so it only has to stay valid until then, and you still own it. A static std::string works.
+// - A C++ exception that leaves the function reaches the page as an error. A crash takes the game down.
+typedef const char*(__cdecl* EF_SiteFunction_t)(const char* args, void* user);
+
+// int EF_RegisterFunction(const char* domain, const char* name, EF_SiteFunction_t function, void* user)
+// Makes function available to the pages of one site, and to no other. Returns 1 if accepted.
+// - domain is the site's address, the same as its folder's name, like "www.mysite.sa".
+// - name uses letters, numbers, '_' and '-', up to 63 characters. It's case-sensitive.
+// - Registering the same domain and name again replaces the function. Passing a NULL function removes it,
+//   which you must do before unloading your mod, or a page's next call would crash the game.
+typedef int(__cdecl* EF_RegisterFunction_t)(const char* domain, const char* name, EF_SiteFunction_t function, void* user);
 #ifdef __cplusplus
 }
 
@@ -158,6 +181,11 @@ inline int GetValue(const char* key, char* buffer, int bufferSize) {
 inline int GetValueInt(const char* key, int defaultValue = 0) {
 	const auto function = Find<EF_GetValueInt_t>("EF_GetValueInt");
 	return function ? function(key, defaultValue) : defaultValue;
+}
+
+inline int RegisterFunction(const char* domain, const char* name, EF_SiteFunction_t function, void* user = nullptr) {
+	const auto registerFunction = Find<EF_RegisterFunction_t>("EF_RegisterFunction");
+	return registerFunction ? registerFunction(domain, name, function, user) : 0;
 }
 
 inline int GetUnreadCount() {

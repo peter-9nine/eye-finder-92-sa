@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cmath>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <thread>
@@ -156,8 +157,28 @@ CefRefPtr<CefResourceHandler> JsonResponse(int status, std::string text) {
 	return new CefStreamResourceHandler(status, status == 200 ? "OK" : "Error", "application/json", headers, CefStreamReader::CreateForHandler(reader));
 }
 
-// The inbox, for its own site only. Other sites can neither read nor change it:
-// the custom header makes the browser ask for permission (CORS), which is never granted here.
+std::string LowercaseHost(const std::string& url) {
+	CefURLParts parts;
+	if (!CefParseURL(url, parts)) return {};
+	std::string host = CefString(&parts.host).ToString();
+	std::transform(host.begin(), host.end(), host.begin(), [](unsigned char letter) { return static_cast<char>(std::tolower(letter)); });
+	return host;
+}
+
+// Whether a page of this same site made the request. This is what keeps real sites and other local
+// sites away from the mail and the game, and it must be checked here: Chromium doesn't send CORS
+// preflights to scheme handlers, so a request with a custom header from another origin still arrives,
+// and CORS only hides the answer from it. The frame's address and the Origin header are both checked,
+// because the frame's address can lag behind for a moment while a tab changes page.
+bool FromSameSite(CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, const std::string& host) {
+	const std::string frameHost = frame ? LowercaseHost(frame->GetURL().ToString()) : std::string();
+	const std::string origin = request->GetHeaderByName("Origin").ToString();
+	const bool sameSite = frameHost == host && (origin.empty() || LowercaseHost(origin) == host);
+	if (!sameSite) LOG(WARNING) << "Refused a request to " << host << " from frame [" << frameHost << "] with origin [" << origin << "]";
+	return sameSite;
+}
+
+// The inbox, for its own site only. Other sites can neither read nor change it.
 CefRefPtr<CefResourceHandler> HandleMailApi(const std::string& path, CefRefPtr<CefRequest> request) {
 	if (request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
 
@@ -509,16 +530,160 @@ CefRefPtr<CefResourceHandler> ServeAdImage(const std::string& path) {
 	return JsonResponse(404, "{}");
 }
 
-// What a local site can ask of the game. Real sites can't get here: these domains are only
-// served from disk, and the custom header stops another origin from making the request.
-CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs::path& root, const std::string& path, CefRefPtr<CefRequest> request) {
+// --- A page calling a mod's C++ function ---
+// The game answers on a later frame, so the request stays open until then, without blocking anyone.
+constexpr int kSiteCallTimeoutMs = 10000;
+
+std::mutex gSiteCallsMutex;
+uint32_t gNextSiteCall = 1;
+
+class SiteCallHandler : public CefResourceHandler {
+public:
+	SiteCallHandler(std::string domain, std::string name, std::string args) : domain_(std::move(domain)), name_(std::move(name)), args_(std::move(args)) {}
+
+	bool Open(CefRefPtr<CefRequest>, bool& handleRequest, CefRefPtr<CefCallback> callback) override;
+
+	void GetResponseHeaders(CefRefPtr<CefResponse> response, int64_t& length, CefString&) override {
+		response->SetStatus(status_);
+		response->SetStatusText(status_ == 200 ? "OK" : "Error");
+		response->SetMimeType("text/plain");
+		response->SetCharset("utf-8");
+		response->SetHeaderByName("Cache-Control", "no-store", true);
+		length = static_cast<int64_t>(text_.size());
+	}
+
+	bool Read(void* out, int wanted, int& got, CefRefPtr<CefResourceReadCallback>) override {
+		got = static_cast<int>((std::min<size_t>)(static_cast<size_t>(wanted), text_.size() - sent_));
+		if (got <= 0) {
+			got = 0;
+			return false;
+		}
+		std::memcpy(out, text_.data() + sent_, static_cast<size_t>(got));
+		sent_ += static_cast<size_t>(got);
+		return true;
+	}
+
+	void Cancel() override;
+
+	// With gSiteCallsMutex held. The caller then continues the returned callback, without it.
+	CefRefPtr<CefCallback> SetAnswer(int status, std::string text) {
+		status_ = status;
+		text_ = std::move(text);
+		id_ = 0;
+		CefRefPtr<CefCallback> callback = callback_;
+		callback_ = nullptr;
+		return callback;
+	}
+
+private:
+	const std::string domain_;
+	const std::string name_;
+	const std::string args_;
+	uint32_t id_ = 0;
+	int status_ = 504;
+	std::string text_;
+	size_t sent_ = 0;
+	CefRefPtr<CefCallback> callback_;
+
+	IMPLEMENT_REFCOUNTING(SiteCallHandler);
+};
+
+std::map<uint32_t, CefRefPtr<SiteCallHandler>> gSiteCalls;
+
+void SiteCallHandler::Cancel() {
+	// Keeps this alive until the lock is released, because the map may hold the last reference.
+	CefRefPtr<SiteCallHandler> self = this;
+	std::lock_guard lock(gSiteCallsMutex);
+	if (id_) gSiteCalls.erase(id_);
+	id_ = 0;
+	callback_ = nullptr;
+}
+
+void AnswerSiteCall(uint32_t id, int status, std::string text) {
+	CefRefPtr<CefCallback> callback;
+	{
+		std::lock_guard lock(gSiteCallsMutex);
+		const auto found = gSiteCalls.find(id);
+		if (found == gSiteCalls.end()) return;  // The page left, or it already timed out.
+		callback = found->second->SetAnswer(status, std::move(text));
+		gSiteCalls.erase(found);
+	}
+	if (callback) callback->Continue();
+}
+
+bool SiteCallHandler::Open(CefRefPtr<CefRequest>, bool& handleRequest, CefRefPtr<CefCallback> callback) {
+	std::lock_guard lock(gSiteCallsMutex);
+
+	const uint32_t write = gHeader->siteCallWrite.load(std::memory_order_relaxed);
+	if (write - gHeader->siteCallRead.load(std::memory_order_acquire) >= ef::kSiteCallRingSize) {
+		status_ = 503;
+		handleRequest = true;
+		return true;
+	}
+
+	id_ = gNextSiteCall++;
+	callback_ = callback;
+	gSiteCalls[id_] = this;
+
+	ef::SiteCall& entry = gHeader->siteCalls[write % ef::kSiteCallRingSize];
+	std::memset(&entry, 0, sizeof(entry));
+	entry.id = id_;
+	std::memcpy(entry.domain, domain_.data(), domain_.size());
+	std::memcpy(entry.name, name_.data(), name_.size());
+	std::memcpy(entry.args, args_.data(), args_.size());
+	gHeader->siteCallWrite.store(write + 1, std::memory_order_release);
+
+	// The game can be stalled, or in the pause menu, and the page must still get an answer.
+	CefPostDelayedTask(TID_IO, base::BindOnce(&AnswerSiteCall, id_, 504, std::string()), kSiteCallTimeoutMs);
+
+	handleRequest = false;
+	return true;
+}
+
+// On the thread that reads the game's events.
+void DeliverSiteCallResults() {
+	static ef::SiteCallResult result;
+	for (;;) {
+		const uint32_t read = gHeader->siteResultRead.load(std::memory_order_relaxed);
+		if (read == gHeader->siteResultWrite.load(std::memory_order_acquire)) return;
+
+		result = gHeader->siteResults[read % ef::kSiteCallRingSize];
+		gHeader->siteResultRead.store(read + 1, std::memory_order_release);
+		result.text[ef::kSiteCallTextSize - 1] = '\0';
+
+		const int status = result.status == ef::SiteCallStatus::Ok ? 200 :
+			result.status == ef::SiteCallStatus::NoFunction ? 404 :
+			result.status == ef::SiteCallStatus::TooLong ? 413 : 500;
+		AnswerSiteCall(result.id, status, status == 200 ? std::string(result.text) : std::string());
+	}
+}
+
+std::string RequestBody(CefRefPtr<CefRequest> request) {
+	std::string body;
+	CefRefPtr<CefPostData> data = request->GetPostData();
+	if (!data) return body;
+
+	CefPostData::ElementVector elements;
+	data->GetElements(elements);
+	for (const auto& element : elements) {
+		const size_t size = element->GetBytesCount();
+		if (element->GetType() != PDE_TYPE_BYTES || size == 0) continue;
+		const size_t start = body.size();
+		body.resize(start + size);
+		element->GetBytes(size, body.data() + start);
+	}
+	return body;
+}
+
+// What a local site can ask of the game, from its own pages only: see FromSameSite.
+CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs::path& root, const std::string& path, CefRefPtr<CefRequest> request, bool sameSite) {
 	// Public information: the site list and ads are read on every request.
 	if (path == "/_game/sa.js") return ServeFile(SystemDirectory() / L"ui" / L"sa.js", "text/javascript");
 	if (path == "/_game/sites.json") return JsonResponse(200, BuildSitesJson());
 	if (path == "/_game/ads.json") return JsonResponse(200, BuildAdsJson());
 	if (path.rfind("/_game/ad/", 0) == 0) return ServeAdImage(path.substr(10));
 
-	if (request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
+	if (!sameSite || request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
 
 	if (path == "/_game/state.json") return JsonResponse(200, BuildGameStateJson());
 	if (path == "/_game/values.json") return JsonResponse(200, BuildValuesJson());
@@ -560,6 +725,18 @@ CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs:
 		return JsonResponse(200, "{}");
 	}
 
+	if (path.rfind("/_game/call/", 0) == 0 && request->GetMethod().ToString() == "POST") {
+		// The domain comes from the folder serving this request, so a page can only reach its own functions.
+		const std::string name = path.substr(12);
+		const bool valid = !name.empty() && name.size() < ef::kSiteCallNameSize &&
+			name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == std::string::npos;
+		if (!valid || domain.size() >= ef::kSiteCallDomainSize) return JsonResponse(400, "{}");
+
+		std::string args = RequestBody(request);
+		if (args.size() >= ef::kSiteCallTextSize) return JsonResponse(400, "{}");
+		return new SiteCallHandler(domain, name, std::move(args));
+	}
+
 	if (path.rfind("/_game/script/", 0) == 0 && request->GetMethod().ToString() == "POST") {
 		// Only simple names, and only from the site's own scripts folder.
 		const std::string name = path.substr(14);
@@ -587,7 +764,7 @@ class SiteHandlerFactory : public CefSchemeHandlerFactory {
 public:
 	SiteHandlerFactory(fs::path root, bool isMailSite, int requiredSession) : root_(std::move(root)), isMailSite_(isMailSite), requiredSession_(requiredSession) {}
 
-	CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString&, CefRefPtr<CefRequest> request) override {
+	CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString&, CefRefPtr<CefRequest> request) override {
 		// Checked first and for every request, so that links, scripts and the game API are all covered.
 		if (requiredSession_ >= 0 && !SessionReaches(requiredSession_)) return Forbidden();
 
@@ -596,8 +773,17 @@ public:
 
 		// A site can't leave its folder.
 		const std::string escaped = CefString(&parts.path).ToString();
-		if (isMailSite_ && escaped.rfind("/api/", 0) == 0) return HandleMailApi(escaped, request);
-		if (escaped.rfind("/_game/", 0) == 0) return HandleGameApi(root_.filename().string(), root_, escaped, request);
+		// By the address asked for, not the folder: the typo site answers under many addresses.
+		const std::string host = LowercaseHost(request->GetURL().ToString());
+		if (isMailSite_ && escaped.rfind("/api/", 0) == 0) {
+			if (!FromSameSite(frame, request, host)) return JsonResponse(403, "{}");
+			return HandleMailApi(escaped, request);
+		}
+		if (escaped.rfind("/_game/", 0) == 0) {
+			// The public paths don't need it, and refusing them would fill the log.
+			const bool needsCheck = !request->GetHeaderByName("X-EyeFinder").empty();
+			return HandleGameApi(root_.filename().string(), root_, escaped, request, needsCheck && FromSameSite(frame, request, host));
+		}
 
 		const std::wstring decoded = CefURIDecode(escaped, true, UU_SPACES).ToWString();
 		fs::path relative = fs::path(decoded).relative_path().lexically_normal();
@@ -1826,6 +2012,8 @@ void PumpEvents(HANDLE wake, HANDLE parent) {
 			SetEvent(gQuit);
 			return;
 		}
+
+		DeliverSiteCallResults();
 
 		uint32_t read = gHeader->ringRead.load(std::memory_order_relaxed);
 		const uint32_t write = gHeader->ringWrite.load(std::memory_order_acquire);

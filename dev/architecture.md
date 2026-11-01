@@ -28,6 +28,8 @@ They communicate only through `shared/ipc.h`, a shared memory section with these
 | Triple frame buffer | Helper to plugin | Frames. Each side swaps its slot with `ready`, so nobody waits |
 | `ring` of `Event` | Plugin to helper | Input, show and hide, mail count and session. It drops events when full |
 | `mailOps` | Helper to plugin | Marking mail read, deleting it and answering it |
+| `siteCalls` | Helper to plugin | A page calling a mod's C++ function |
+| `siteResults` | Plugin to helper | The answers to those calls |
 | `siteScripts` | Helper to plugin | CLEO scripts that a local site asked to start |
 | `valueOps` | Helper to plugin | Shared values set by pages |
 | `gameState` | Plugin to helper | Published about five times a second, and guarded by a sequence counter |

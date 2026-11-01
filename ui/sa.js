@@ -138,7 +138,32 @@
     }).then((response) => response.ok);
   }
 
-  window.sa = { runScript, sites, ads, fillAds, shuffle, state, values, get, set, browser, searchSites, searchHidden };
+  const CALL_ERRORS = {
+    400: 'The function name or its arguments are invalid or too long',
+    404: 'No mod has registered this function for this site',
+    413: 'The answer is too long',
+    500: 'The function failed',
+    503: 'The game is too busy',
+    504: 'The game did not answer in time',
+  };
+
+  // Runs a C++ function that a mod registered for this site with EF_RegisterFunction. Anything
+  // that isn't text is sent as JSON. The answer is always text, and any failure rejects the promise.
+  async function call(name, args = '') {
+    const body = typeof args === 'string' ? args : JSON.stringify(args);
+    for (let tries = 0; ; tries++) {
+      const response = await fetch('/_game/call/' + encodeURIComponent(name), { method: 'POST', cache: 'no-store', headers: gameHeaders, body });
+      if (response.ok) return response.text();
+      // Only a few calls fit between two frames, and more room appears on the next one.
+      if (response.status === 503 && tries < 20) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue;
+      }
+      throw new Error(CALL_ERRORS[response.status] || 'The call failed');
+    }
+  }
+
+  window.sa = { runScript, call, sites, ads, fillAds, shuffle, state, values, get, set, browser, searchSites, searchHidden };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => fillAds());
   else fillAds();

@@ -101,6 +101,26 @@ int level = eyefinder::GetValueInt("mymod.level", 0);
 
 `examples/ApiDemo` is a complete example. To try it, run `tools\deploy.ps1 -Demo`, then in-game press F9 (email with answers), F10 (email on the pager), F11 (pager message) or Shift+F11 (help box text). To remove it, delete `EyeFinderApiDemo.asi` from the mod folder.
 
+### Running C++ from a web page
+
+Your mod can register a function for one site, and that site's pages can then run it and get an answer back. It runs on the game thread, so it can use the game.
+
+```cpp
+const char* __cdecl BuyCar(const char* args, void* user) {
+    static std::string answer;
+    answer = "You asked for model " + std::string(args);
+    return answer.c_str();
+}
+
+eyefinder::RegisterFunction("www.mysite.sa", "buyCar", BuyCar);
+```
+
+```js
+const answer = await sa.call('buyCar', '411');
+```
+
+The `.asi` can be anywhere in the `modloader` folder, including inside the site's own folder. The full details are in [`api/FAQ.md`](api/FAQ.md#c-functions). A site with an `.asi` is a mod, so only install one from people you trust.
+
 ## CLEO scripts
 
 CLEO scripts can start from an email answer, from another mod through `EF_RunCleoScript`, or from a button on a site:
