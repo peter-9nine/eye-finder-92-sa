@@ -144,7 +144,7 @@ bool BrowserOverlay::EnsureHelper() {
 	const std::string problem = BrowserRuntimeProblem(folder);
 	if (!problem.empty()) {
 		Log("Can't start the browser: " + problem);
-		startProblem_ = "EyeFinder needs CEF. Read INSTALL_CEF.txt in its browser folder.";
+		startProblem_ = "EyeFinder needs CEF. Run Install CEF.bat in its mod folder.";
 		return false;
 	}
 

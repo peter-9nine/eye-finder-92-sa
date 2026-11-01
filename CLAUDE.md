@@ -67,7 +67,7 @@ Non-obvious behavior:
 
 ## Folder layout and CEF
 
-CEF is too big to ship, so players download it into the `browser` folder themselves. Only `EyeFinderBrowser.exe` and CEF belong there, and everything else lives beside it:
+CEF is too big to ship, so players download it into the `browser` folder by running `Install CEF.bat`. `tools\make-installer.ps1` builds it from `tools\install-cef.ps1` for both `package.ps1` and `deploy.ps1`. Every build of the plugin, including in Visual Studio, runs `deploy.ps1 -FromBuild` through the `DeployToGame` target, which skips the copy without failing if the game is open or `GTA_SA_DIR` is unset. It doesn't copy CEF, so the game folder matches a player's. Only `EyeFinderBrowser.exe` and CEF belong there, and everything else lives beside it:
 
 ```
 modloader\EyeFinder92SA\
@@ -77,7 +77,7 @@ modloader\EyeFinder92SA\
   sites\, ads\   public: anyone can add to them
 ```
 
-`helper/build` has the same layout, with `Release` as its `browser`, and the helper finds everything from its own parent folder. `deploy.ps1` mirrors `browser`, `system` and `dev`, so don't keep your own files in them, and the release package includes `dev` too. It also never overwrites an edited `locations.json`, and only warns.
+`helper/build` has the same layout, with `Release` as its `browser`, and the helper finds everything from its own parent folder. `deploy.ps1` mirrors `system` and `dev`, so don't keep your own files in them, and the release package includes `dev` too. It also never overwrites an edited `locations.json`, and only warns.
 
 `BrowserRuntimeProblem` checks for CEF's files and the exact version before starting the helper, and the player is told to read `INSTALL_CEF.txt`. When CEF changes, update `kCefVersion` in `shared/ipc.h` and `tools\fetch-cef.ps1` together: the harness fails if the build's `libcef.dll` doesn't match. `package.ps1` fills the download link in `tools\INSTALL_CEF.txt` from `fetch-cef.ps1`, and fails if CEF files reach the package.
 

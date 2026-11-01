@@ -8,7 +8,7 @@ A real web browser inside GTA San Andreas (1.0 US), built on [plugin-sdk](https:
 
 ## Using it
 
-1. Run `tools\deploy.ps1` with the game closed, or copy a release into `modloader\EyeFinder92SA`.
+1. Copy a release into `modloader\EyeFinder92SA`, then double-click **`Install CEF.bat`** in that folder to download the browser engine. It explains what it will do and asks first. It downloads about 160 MB and takes up about 400 MB. If Windows warns about the file, choose **More info**, then **Run anyway**.
 2. Load a game and go to a computer, such as the one at the cyber cafe, then press **TAB**, or **L1** on a controller. Which computer you use decides what you can reach, and normal computers charge by the minute.
 
 | Key | Action |

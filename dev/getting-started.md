@@ -48,6 +48,8 @@ $env:GTA_SA_DIR = 'D:\GAMES\GTA San Andreas'
 tools\deploy.ps1
 ```
 
+Then double-click `Install CEF.bat` in `modloader\EyeFinder92SA`, which is only needed once.
+
 `setx` only reaches new terminals and Visual Studio windows, which is why these also set the variable for the current one. Everything else the build needs is either in the repository, such as `vendor/nlohmann`, or downloaded by it.
 
 Optional, for testing in-game:
@@ -67,9 +69,13 @@ tools\build.ps1     # fetches CEF if needed, then builds the helper, harness and
 tools\deploy.ps1    # copies to %GTA_SA_DIR%\modloader\EyeFinder92SA
 ```
 
-`deploy.ps1` refuses to run while the game is open. A build alone changes nothing in your game, so always deploy before testing in-game.
+**Building the plugin also copies the mod to the game,** in Visual Studio or with `build.ps1`, even when nothing needed compiling. If the game is open or `GTA_SA_DIR` isn't set, it says so and skips the copy, without failing the build. `deploy.ps1` does the same copy by itself, and refuses instead.
 
-`build.ps1` always builds the helper in Release, because the minimal CEF distribution has no Debug libraries. To build a Debug plugin, use `tools\build.ps1 -Configuration Debug`, and then `tools\deploy.ps1 -Configuration Debug`.
+It lays the folder out exactly as a player gets it, so deleting `modloader\EyeFinder92SA\browser` and building gives you a clean install. CEF isn't copied: double-click `Install CEF.bat` in that folder once, and it stays there through later builds.
+
+Visual Studio only builds the plugin. Pages in `ui` and `sites` reach the game with any build, but after changing the helper, run `tools\build.ps1`.
+
+`build.ps1` always builds the helper in Release, because the minimal CEF distribution has no Debug libraries. To build a Debug plugin, use `tools\build.ps1 -Configuration Debug`.
 
 ## Trying it in-game
 

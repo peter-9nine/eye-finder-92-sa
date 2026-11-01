@@ -166,4 +166,11 @@
   <Target Name="CreateShaderOutputDir" BeforeTargets="FxCompile">
     <MakeDir Directories="$(IntDir)generated" />
   </Target>
+  <!-- Visual Studio would otherwise skip the build when nothing changed, and the game folder wouldn't be updated. -->
+  <PropertyGroup>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+  </PropertyGroup>
+  <Target Name="DeployToGame" AfterTargets="Build">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)tools\deploy.ps1&quot; -Plugin &quot;$(TargetPath)&quot; -FromBuild" ContinueOnError="true" />
+  </Target>
 </Project>

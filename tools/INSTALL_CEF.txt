@@ -1,5 +1,9 @@
 EyeFinder92SA needs CEF, the browser engine, which isn't included with the mod.
 
+The easy way: double-click "Install CEF.bat" in the mod's folder, one level up from here.
+
+If that doesn't work for you, here's how to do it by hand:
+
 1. Download this exact version. Any other version won't work:
    {{URL}}
 

@@ -16,14 +16,7 @@ Copy-Item "$root\helper\build\system" $package -Recurse
 Copy-Item "$root\dev" $package -Recurse
 Copy-Item "$root\licenses" $package -Recurse
 Copy-Item "$root\public\*" $package -Recurse
-
-# fetch-cef.ps1 holds the pinned version, so the instructions can't disagree with the build.
-$fetch = Get-Content "$PSScriptRoot\fetch-cef.ps1" -Raw
-if ($fetch -notmatch "\`$name = '([^']+)'") { throw 'Could not find the CEF version in fetch-cef.ps1' }
-$name = $Matches[1]
-$url = "https://cef-builds.spotifycdn.com/$($name.Replace('+', '%2B')).tar.bz2"
-$instructions = (Get-Content "$PSScriptRoot\INSTALL_CEF.txt" -Raw).Replace('{{URL}}', $url).Replace('{{NAME}}', $name)
-[IO.File]::WriteAllText((Join-Path $browser 'INSTALL_CEF.txt'), $instructions, (New-Object Text.UTF8Encoding($false)))
+& (Join-Path $PSScriptRoot 'make-installer.ps1') -ModFolder $package
 
 $unwanted = Get-ChildItem $package -Recurse -File -Include 'libcef.dll', 'chrome_elf.dll', '*.pak', 'icudtl.dat', '*.pdb'
 if ($unwanted) { throw "CEF files got into the package: $($unwanted.Name -join ', ')" }

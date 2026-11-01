@@ -36,7 +36,7 @@ Each of these has a reason, explained in the docs above.
 - **Web pages are untrusted, and so is text from other mods.** Insert their text as text, never as HTML. Real sites must never reach game features such as money.
 - **Only the shell can give the helper commands.** `cefQuery` is only injected into `file:` pages, the handler checks the browser and URL, the shell can't navigate away, and tabs can't open `file:` URLs. Keep all of that when adding commands.
 - **Local mode stays the default.** The confirmation dialog appears on every switch to the real internet.
-- **Don't keep your own files in `browser`, `system` or `dev` in the game folder.** `tools\deploy.ps1` mirrors all three, and deletes anything that isn't in the project. To change these docs, edit them in the project.
+- **Don't keep your own files in `system` or `dev` in the game folder.** Every build mirrors both, and deletes anything that isn't in the project. To change these docs, edit them in the project.
 - **Look at the captures.** A passing harness doesn't prove that things look right. It once passed with every desktop icon broken.
 
 ## Conventions

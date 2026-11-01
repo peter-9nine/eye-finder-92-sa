@@ -101,6 +101,7 @@ The game folder separates CEF from everything else, so that the mod can ship wit
 ```
 modloader\EyeFinder92SA\
   EyeFinder92SA.asi, EyeFinder92SA.ini, locations.json, save data\
+  Install CEF.bat, install-cef.ps1   the installer for CEF
   browser\   EyeFinderBrowser.exe, INSTALL_CEF.txt, and CEF
   system\    ui\ and sites\: the mod's, replaced on update
   sites\, ads\   public: anyone can add to them

@@ -47,12 +47,12 @@ std::string BrowserRuntimeProblem(const std::wstring& folder) {
 
 		char narrow[64]{};
 		WideCharToMultiByte(CP_UTF8, 0, name, -1, narrow, sizeof(narrow) - 1, nullptr, nullptr);
-		return std::string("CEF isn't installed: ") + narrow + " is missing from the browser folder. See INSTALL_CEF.txt there";
+		return std::string("CEF isn't installed: ") + narrow + " is missing from the browser folder. Run Install CEF.bat in the mod folder";
 	}
 
 	// The helper only runs with the exact build it was compiled against.
 	const std::string version = FileVersionText(folder + L"\\libcef.dll");
-	if (version != ef::kCefVersion) return "Wrong CEF version: found " + version + ", need " + ef::kCefVersion + ". See INSTALL_CEF.txt in the browser folder";
+	if (version != ef::kCefVersion) return "Wrong CEF version: found " + version + ", need " + ef::kCefVersion + ". Run Install CEF.bat in the mod folder";
 	return {};
 }
 
