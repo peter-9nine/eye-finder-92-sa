@@ -146,7 +146,7 @@ Chromium runs in its own process, so it doesn't use the game's limited 32-bit ad
 
 ## Developing
 
-The [developer docs](dev/README.md) cover building, testing, how it all works and how to release it.
+Start with [setting up from nothing](dev/getting-started.md#setting-up-from-nothing). The rest of the [developer docs](dev/README.md) cover testing, how it all works and how to release it.
 
 ## Author
 

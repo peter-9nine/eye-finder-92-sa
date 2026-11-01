@@ -130,4 +130,4 @@ The browser starts in local mode, and the real internet is only enabled by the s
 - **File encoding:** sources are UTF-8 without BOM, and comments are in English. `.sln`, `.vcxproj` and `.filters` files are UTF-8 with BOM and CRLF.
 - **Hooks:** to run code around a vanilla function, hook its call sites, so that changes other mods already made there are kept. Prefer a plugin-sdk event, and use `injector::function_hooker` when the return value is needed, because events don't provide it. Use `safetyhook::create_inline` when replacing a function's behavior. All of them take absolute 1.0 US addresses.
 - **Plugin target:** 32-bit, C++latest, static CRT. Include project headers with quotes, and don't name one `types.h`, because the SDK's would shadow it.
-- **`$(PLUGIN_SDK_DIR)`:** it's shared by every plugin in `generated/`, so changes there affect them all.
+- **`$(PLUGIN_SDK_DIR)`:** it's shared by every plugin in `generated/`, so changes there affect them all. A fresh clone must build against the public plugin-sdk, so don't depend on anything in `generated/shared` or on the developer's own SDK changes: libraries go in `vendor/`.

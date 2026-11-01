@@ -2,13 +2,53 @@
 
 ## What you need
 
-- **Windows**, with **Visual Studio 2022 Community** and its C++ tools. `tools\build.ps1` has the Community edition's MSBuild path written in it, so change that line if you use another edition.
+- **Windows**, with **Visual Studio 2022** and its "Desktop development with C++" tools, including the Windows SDK. Any edition works.
 - **CMake** 3.21 or newer, on your `PATH`.
-- **plugin-sdk, already built**, so that `output\lib\plugin.lib` exists. Set `PLUGIN_SDK_DIR` to its folder.
-- Two things in that plugin-sdk folder that a stock copy may not have:
-  - `safetyhook\safetyhook.hpp`, which `include\pch.h` includes.
-  - `tools\myplugin-gen\generated\shared`, which holds `nlohmann/json.hpp`.
-- **GTA San Andreas 1.0 US** with modloader. Set `GTA_SA_DIR` to its folder, for deploying.
+- **Git.**
+- **[plugin-sdk](https://github.com/DK22Pac/plugin-sdk)**, built as below.
+- **GTA San Andreas 1.0 US** with modloader, for testing in-game.
+
+## Setting up from nothing
+
+Use short folder paths. CMake's compiler check fails with a confusing error in a deep folder, because of Windows' 260-character path limit.
+
+**1. Build plugin-sdk.** This only needs doing once, and it takes a few minutes:
+
+```powershell
+git clone https://github.com/DK22Pac/plugin-sdk.git D:\plugin-sdk
+setx PLUGIN_SDK_DIR D:\plugin-sdk
+$env:PLUGIN_SDK_DIR = 'D:\plugin-sdk'
+
+cd D:\plugin-sdk\tools\premake
+.\premake5.exe vs2022
+cd D:\plugin-sdk
+
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+& $msbuild plugin.sln /m /t:Plugin_SA /p:Configuration=Release "/p:Platform=Mixed Platforms"
+```
+
+That creates `output\lib\plugin.lib`. For a Debug plugin, also build with `/p:Configuration=Debug`.
+
+**2. Clone and build the mod:**
+
+```powershell
+git clone https://github.com/peter-9nine/eye-finder-92-sa.git D:\dev\EyeFinder92SA
+cd D:\dev\EyeFinder92SA
+tools\build.ps1
+```
+
+If PowerShell refuses to run scripts, use `powershell -ExecutionPolicy Bypass -File tools\build.ps1`.
+
+**3. To test in-game,** point `GTA_SA_DIR` at the game, then deploy:
+
+```powershell
+setx GTA_SA_DIR "D:\GAMES\GTA San Andreas"
+$env:GTA_SA_DIR = 'D:\GAMES\GTA San Andreas'
+tools\deploy.ps1
+```
+
+`setx` only reaches new terminals and Visual Studio windows, which is why these also set the variable for the current one. Everything else the build needs is either in the repository, such as `vendor/nlohmann`, or downloaded by it.
 
 Optional, for testing in-game:
 

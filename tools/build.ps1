@@ -13,6 +13,8 @@ $library = if ($Configuration -eq 'Debug') { 'plugin_d.lib' } else { 'plugin.lib
 if (-not $env:PLUGIN_SDK_DIR) { throw 'PLUGIN_SDK_DIR is not set. See dev\getting-started.md' }
 if (-not (Test-Path (Join-Path $env:PLUGIN_SDK_DIR "output\lib\$library"))) { throw "$library isn't in $env:PLUGIN_SDK_DIR\output\lib, so plugin-sdk hasn't been built. See dev\getting-started.md" }
 if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) { throw 'CMake is not on the PATH. See dev\getting-started.md' }
+# CMake's compiler check fails with a confusing error once its paths pass Windows' limit.
+if ($root.Length -gt 80) { Write-Warning "$root is a long path, and the build may fail because of it. If it does, clone to a short one, like D:\dev\EyeFinder92SA" }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $msbuild = if (Test-Path $vswhere) { & $vswhere -latest -version '[17.0,18.0)' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1 }
