@@ -55,6 +55,7 @@ Every local site gets these. The page-facing documentation is in [`api/FAQ.md`](
 | `/_game/browser.json` | The connection, the session type and its id | Yes |
 | `/_game/search.json` | What search can find, with each page's text | Yes |
 | `/_game/hidden.json` | The hidden folder, only in a dark web session | Yes |
+| `POST /_game/alarm` | The C.R.A.S.H. penalty, only for the police site | Yes |
 | `POST /_game/value/<key>` | Sets a shared value | Yes |
 | `POST /_game/script/<name>` | Starts `<domain>/scripts/<name>.efs` | Yes |
 

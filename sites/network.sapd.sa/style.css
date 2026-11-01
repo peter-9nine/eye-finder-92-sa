@@ -1,0 +1,167 @@
+/* Taken from a black-and-white patrol car: hard black against white, a gold shield and a light bar.
+   The home page's hero is the car's door. Everything else stays plain, so it's quick to use in-game. */
+:root {
+  --black: #000;
+  --white: #fff;
+  --ground: #eceef0;
+  --line: #c7ccd1;
+  --ink: #15181b;
+  --muted: #565d65;
+  --gold: #d9a521;
+  --red: #c8141d;
+  --blue: #1450c8;
+  --green: #1d7a3a;
+  --grey: #666d75;
+  --heading: "Franklin Gothic Medium", "Arial Narrow", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ground); }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 16px/1.45 "Segoe UI", Arial, sans-serif; }
+h1, h2, h3, p, dl, dd { margin: 0; }
+a { color: inherit; }
+.defs { position: absolute; width: 0; height: 0; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+/* --- Top of every page --- */
+.lightbar { height: 6px; background: linear-gradient(90deg, var(--red) 0 46%, var(--white) 46% 54%, var(--blue) 54%); }
+.masthead { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 46px; padding: 0 20px; background: var(--black); color: var(--white); }
+.brand { display: flex; align-items: center; gap: 10px; font: 20px var(--heading); text-decoration: none; white-space: nowrap; }
+.brandSeal { width: 28px; height: 32px; }
+.officialUse { color: var(--gold); font-size: 13px; white-space: nowrap; }
+
+.tabs { position: sticky; top: 0; z-index: 2; display: flex; gap: 2px; padding: 0 20px; background: var(--black); }
+.tabs a { padding: 9px 15px; color: #d7dade; font: 16px var(--heading); text-decoration: none; white-space: nowrap; }
+.tabs a:hover { background: #33373b; color: var(--white); }
+.tabs a[aria-current=page] { background: var(--ground); color: var(--ink); box-shadow: inset 0 3px 0 var(--gold); }
+.tabs .restricted { margin-left: auto; color: #ff9a9f; }
+.tabs .restricted[aria-current=page] { color: var(--red); box-shadow: inset 0 3px 0 var(--red); }
+
+.content { padding: 20px; }
+.pageTitle { font: 28px/1.15 var(--heading); }
+.pageNote { margin: 3px 0 14px; color: var(--muted); }
+.pageTitle + .table { margin-top: 12px; }
+
+/* --- Home: the patrol car's door --- */
+.home { margin: -20px -20px 0; }
+.door { position: relative; display: flex; align-items: center; justify-content: center; gap: 26px; min-height: 250px; padding: 22px 180px; background: linear-gradient(101deg, var(--black) 0 142px, var(--white) 143px calc(100% - 165px), var(--black) calc(100% - 164px)); }
+.doorSeam { position: absolute; top: 0; bottom: 0; right: 215px; width: 2px; background: #d2d5d8; }
+.doorSeal { flex: none; width: 118px; height: 137px; }
+.doorWords { position: relative; color: var(--black); }
+.doorWords h1 { font: 76px/0.95 Impact, "Arial Narrow", sans-serif; letter-spacing: 1px; }
+.doorDepartment { font: 21px/1.2 var(--heading); }
+.doorMotto { margin-top: 3px; color: var(--muted); font-style: italic; }
+.unitNumber { position: absolute; left: 34px; top: 50%; margin-top: -32px; color: var(--white); font: 58px/1.1 Impact, sans-serif; }
+
+.homeColumns { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; padding: 18px 20px 24px; }
+.homeColumns h2 { margin-bottom: 7px; font: 21px var(--heading); }
+.welcome p { max-width: 58ch; margin-bottom: 12px; }
+.homeList { margin: 0; padding: 0; list-style: none; border-top: 2px solid var(--black); }
+.homeList li { border-bottom: 1px solid var(--line); }
+.homeList a { display: flex; justify-content: space-between; gap: 12px; padding: 7px 2px; text-decoration: none; }
+.homeList a:hover { background: var(--white); }
+.homeList .reward { flex: none; color: var(--red); font-weight: 600; }
+.homeSection + .homeSection { margin-top: 16px; }
+
+.primaryButton { display: inline-block; padding: 9px 22px; background: var(--black); border: 0; color: var(--white); font: 17px var(--heading); text-decoration: none; cursor: pointer; }
+.primaryButton:hover { background: #33373b; }
+
+/* --- Status --- */
+.status { display: inline-block; padding: 1px 9px; color: var(--white); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.status-wanted { background: var(--red); }
+.status-clear { background: var(--green); }
+.status-officer { background: var(--blue); }
+.status-sealed, .status-removed { background: var(--grey); }
+
+/* A photo slot: the picture if there's one, or a silhouette until then. */
+.photo { display: block; flex: none; overflow: hidden; background: #d3d7db; }
+.photo img, .photo svg { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* --- Records --- */
+.searchForm { display: flex; gap: 8px; max-width: 720px; margin-bottom: 14px; }
+.searchForm input { flex: 1; min-width: 0; padding: 9px 12px; background: var(--white); border: 2px solid var(--black); color: inherit; font: 18px "Segoe UI", Arial, sans-serif; }
+.searchHint { color: var(--muted); }
+
+.looking { display: flex; align-items: center; gap: 14px; padding: 18px 0; font: 21px var(--heading); }
+.lookingBar { width: 180px; height: 6px; overflow: hidden; background: var(--line); }
+.lookingBar::after { content: ""; display: block; width: 40%; height: 100%; background: var(--black); animation: looking 0.9s linear infinite; }
+@keyframes looking { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
+.resultCount { margin-bottom: 6px; color: var(--muted); }
+.results { border-top: 2px solid var(--black); }
+.result { display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 4px; background: var(--white); border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+.result:hover { background: #fff6da; }
+.result .photo { width: 48px; height: 60px; }
+.resultText { flex: 1; min-width: 0; }
+.resultName { display: block; font: 19px/1.2 var(--heading); }
+.resultDetail { display: block; color: var(--muted); font-size: 14px; }
+.noMatch { padding: 14px 0; }
+
+.backLink { display: inline-block; margin-bottom: 10px; }
+.record { display: grid; grid-template-columns: 190px 1fr; gap: 22px; align-items: start; }
+.record > .photo { width: 190px; height: 238px; }
+.recordName { font: 32px/1.1 var(--heading); }
+.recordAlias { margin: 1px 0 7px; color: var(--muted); font-size: 18px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; margin-top: 12px; }
+.facts dt { color: var(--muted); }
+.liveAlert { margin-top: 12px; padding: 7px 12px; background: var(--red); color: var(--white); font-weight: 600; }
+.subhead { margin: 18px 0 6px; font: 20px var(--heading); }
+.notes { max-width: 68ch; }
+
+.table { width: 100%; border-collapse: collapse; background: var(--white); border-top: 2px solid var(--black); }
+.table th { padding: 6px 12px; color: var(--muted); font-size: 14px; font-weight: 600; text-align: left; }
+.table td { padding: 7px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+.nowrap { white-space: nowrap; }
+.urgent td { background: var(--red); color: var(--white); font-weight: 600; }
+.missing { color: var(--red); font-weight: 600; }
+.smallButton { padding: 2px 11px; background: var(--white); border: 1px solid var(--black); color: var(--black); font: 14px "Segoe UI", Arial, sans-serif; cursor: pointer; }
+.smallButton:hover { background: #fff6da; }
+
+/* --- Most Wanted --- */
+.posters { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.poster { display: flex; flex-direction: column; background: var(--white); border-top: 5px solid var(--black); color: inherit; text-decoration: none; }
+.poster:hover { background: #fff6da; }
+.poster.player { border-top-color: var(--red); }
+.poster .photo { width: 100%; height: 190px; }
+.posterText { flex: 1; display: flex; flex-direction: column; padding: 8px 11px 11px; }
+.posterName { font: 21px/1.2 var(--heading); }
+.posterFor { flex: 1; margin-bottom: 7px; color: var(--muted); font-size: 14px; }
+.stars { color: var(--red); letter-spacing: 1px; }
+.reward { color: var(--red); font-weight: 600; }
+
+/* --- Bulletins --- */
+.memo { max-width: 72ch; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.memo:first-of-type { border-top: 2px solid var(--black); margin-top: 12px; }
+.memo h3 { font: 20px var(--heading); }
+.memoFrom { margin-bottom: 3px; color: var(--muted); font-size: 14px; }
+
+/* --- C.R.A.S.H. --- */
+.crash { max-width: 460px; margin: 26px auto 0; padding: 22px; background: var(--white); border-top: 6px solid var(--black); }
+.crash h1 { font: 28px var(--heading); }
+.crash p { margin: 3px 0 14px; color: var(--muted); }
+.crash label { display: block; font-weight: 600; }
+.crash input { display: block; width: 100%; margin: 3px 0 14px; padding: 9px 12px; border: 2px solid var(--black); font: 18px "Segoe UI", Arial, sans-serif; }
+.crash.denied { background: var(--red); border-top-color: var(--black); color: var(--white); text-align: center; }
+.crash.denied p { color: var(--white); }
+.countdown { display: block; font: 76px/1 Impact, sans-serif; }
+
+body.alarm .lightbar { height: 12px; animation: alarm 0.5s steps(1) infinite; }
+@keyframes alarm {
+  0% { background: var(--red); }
+  50% { background: var(--blue); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lookingBar::after { animation: none; width: 100%; }
+  body.alarm .lightbar { animation: none; background: var(--red); }
+}
+
+@media (max-width: 760px) {
+  .door { padding: 18px 20px; background: var(--white); }
+  .doorSeam, .unitNumber { display: none; }
+  .doorWords h1 { font-size: 54px; }
+  .homeColumns, .record { grid-template-columns: 1fr; }
+  .tabs { overflow-x: auto; padding: 0 8px; }
+  .tabs a { padding: 9px 10px; }
+  .officialUse { display: none; }
+}

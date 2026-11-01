@@ -8,7 +8,7 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 8;
+constexpr uint32_t kProtocol = 10;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
@@ -48,7 +48,8 @@ enum class EventType : uint32_t {
 	PadKeyboard, // a = PadKeyboardAction
 	Session,     // a = SessionType, b = price per minute
 	SessionTime, // a = seconds, b = cost so far
-	ModemEffect  // The dial-up popup, for the harness's timing: a = 0 off, 1 rarely (the default), 2 always
+	ModemEffect,  // The dial-up popup, for the harness's timing: a = 0 off, 1 rarely (the default), 2 always
+	EndSession    // The player left the computer: every tab and its history goes
 };
 
 // What a computer can reach, on top of the normal browser.
@@ -148,6 +149,9 @@ struct Header {
 
 	// The on-screen keyboard is open: the pad belongs to it, not to the cursor or pager.
 	std::atomic<uint32_t> keyboardOpen;
+
+	// Someone failed the police site's C.R.A.S.H. password: wanted stars, then the browser closes.
+	std::atomic<uint32_t> alarm;
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);
 static_assert(sizeof(Header) <= kHeaderSize);

@@ -182,6 +182,21 @@ void BrowserOverlay::UpdateSessionClock() {
 	client_.Send({ ef::EventType::SessionTime, 0, 0, seconds, SessionCost(seconds, sessionPrice_) });
 }
 
+// The police site's C.R.A.S.H. password was tried. The stars come now, so the police are on the way
+// while the player is still at the computer, and the browser closes a moment later.
+void BrowserOverlay::RaiseAlarm() {
+	constexpr int kAlarmStars = 3;
+	constexpr DWORD kAlarmCloseMs = 5000;
+
+	if (alarmCloseAt_ != 0) return;
+
+	CWanted* wanted = FindPlayerWanted(-1);
+	if (wanted && wanted->m_nWantedLevel < kAlarmStars) wanted->SetWantedLevel(kAlarmStars);
+
+	alarmCloseAt_ = (std::max<DWORD>)(GetTickCount() + kAlarmCloseMs, 1);
+	Log("C.R.A.S.H. password failed: 3 stars, and the browser closes in 5 seconds");
+}
+
 void BrowserOverlay::ChargeSession() {
 	if (sessionPrice_ <= 0) return;
 
@@ -273,6 +288,7 @@ void BrowserOverlay::BeginClosing() {
 }
 
 void BrowserOverlay::FinishClosing() {
+	client_.Send({ ef::EventType::EndSession });
 	client_.Send({ ef::EventType::Hide });
 	ChargeSession();
 	ReleaseGame();
@@ -285,6 +301,7 @@ void BrowserOverlay::FinishClosing() {
 
 void BrowserOverlay::ReleaseGame() {
 	phase_ = Phase::Closed;
+	alarmCloseAt_ = 0;
 	suspendedByMenu_ = false;
 
 	CPad::GetPad(0)->DisablePlayerControls = savedControls_;
@@ -392,7 +409,11 @@ void BrowserOverlay::Update() {
 		return;
 	}
 
-	if (toggle || client_.TakeCloseRequest()) {
+	if (client_.TakeAlarm()) RaiseAlarm();
+	const bool alarmExpired = alarmCloseAt_ != 0 && static_cast<int32_t>(GetTickCount() - alarmCloseAt_) >= 0;
+
+	if (toggle || client_.TakeCloseRequest() || alarmExpired) {
+		alarmCloseAt_ = 0;
 		BeginClosing();
 		return;
 	}
@@ -657,6 +678,7 @@ void BrowserOverlay::LogStats() {
 
 void BrowserOverlay::Restart() {
 	if (phase_ == Phase::Closed) return;
+	client_.Send({ ef::EventType::EndSession });
 	client_.Send({ ef::EventType::Hide });
 	ReleaseGame();
 }

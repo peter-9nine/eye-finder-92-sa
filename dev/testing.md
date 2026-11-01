@@ -80,7 +80,12 @@ Run through the parts your change could affect. Remember to deploy first, becaus
 - [ ] The timer runs in a paid session, and doesn't run during the pause menu.
 - [ ] Closing takes the money and shows the receipt.
 - [ ] With too little money, it takes what you have.
+- [ ] Reopening after any close starts at the desktop with no tabs, including after C.R.A.S.H.'s alarm.
 - [ ] At a real computer, the prompt appears and names L1 or TAB, and changes when you switch.
+
+**Police site**
+- [ ] Any C.R.A.S.H. password gives 3 stars at once, and the browser closes 5 seconds later.
+- [ ] With more than 3 stars already, the wanted level doesn't drop.
 
 **Search**
 - [ ] The dark web's typed intro plays once in each session, and a key press skips it.

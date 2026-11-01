@@ -30,6 +30,7 @@ public:
 	uint32_t PaintCount() const { return header_ ? header_->paintCount.load(std::memory_order_relaxed) : 0; }
 	ef::CursorKind Cursor() const;
 	bool TakeCloseRequest();
+	bool TakeAlarm();
 	bool KeyboardOpen() const;
 	bool TakeMailOp(ef::MailOp& operation);
 	bool TakeSiteScript(std::string& name);

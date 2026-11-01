@@ -637,7 +637,7 @@ void TestTypos() {
 void TestSessions() {
 	constexpr POINT kInsideTimer = { 1270, 14 };
 	constexpr POINT kPageTop = { 640, 130 };
-	constexpr uint32_t kPoliceHeader = 0x0B2A55;
+	constexpr uint32_t kPoliceHeader = 0x000000;
 	constexpr uint32_t kPoliceDesktop = 0x12306B;
 	constexpr uint32_t kDarkDesktop = 0x101014;
 	constexpr uint32_t kDarkPage = 0x050505;
@@ -696,6 +696,7 @@ void TestSessions() {
 	Expect("search: a normal computer can't search the hidden folder", stored("search.normal.hidden") == "refused" && stored("search.normal.hiddenAll") == "refused");
 	Expect("search: hidden sites don't appear in a normal search", stored("search.normal.leak") == "none");
 	Expect("search: unlisted sites don't appear in a search", stored("search.normal.unlisted") == "none");
+	Expect("search: other sites can't set off the police alarm", stored("search.normal.alarm") == "refused" && !gClient.TakeAlarm());
 
 	// The home page's search, from the page and from the address bar.
 	GoTo("binco clothes", 1500);
@@ -817,6 +818,48 @@ void TestSessions() {
 	Run(1200);
 	Shot("20e_police_site");
 	ExpectPixel("session: the police icon opens its site", kPageTop, kPoliceHeader);
+
+	// The police site: a search waits a moment, and then lists who it found.
+	{
+		const auto pressEnter = [] {
+			gClient.Send({ ef::EventType::KeyDown, 0, 0, VK_RETURN });
+			gClient.Send({ ef::EventType::Char, 0, 0, '\r' });
+			gClient.Send({ ef::EventType::KeyUp, 0, 0, VK_RETURN });
+		};
+		Shot("20e0_police_home");
+		GoTo("network.sapd.sa/#records", 700);
+		TypeText("john");
+		Run(300);
+		Shot("20e1_police_search");
+		pressEnter();
+		Run(300);
+		Shot("20e2_police_looking");
+		Run(2000);
+		Shot("20e3_police_results");
+		GoTo("network.sapd.sa/#records/tenpenny", 700);
+		Shot("20e4_police_sealed");
+		GoTo("network.sapd.sa/#wanted", 700);
+		Shot("20e5_police_wanted");
+		GoTo("network.sapd.sa/#dispatch", 700);
+		Shot("20e6_police_dispatch");
+		GoTo("network.sapd.sa/#evidence", 700);
+		Shot("20e7_police_evidence");
+		GoTo("network.sapd.sa/#bulletins", 700);
+		Shot("20e8_police_bulletins");
+
+		// C.R.A.S.H.: any password fails, and sets off the alarm that the plugin turns into stars.
+		GoTo("network.sapd.sa/#crash", 700);
+		Shot("20e9_police_crash");
+		Expect("police: nothing happens before trying a password", !gClient.TakeAlarm());
+		TypeText("letmein");
+		pressEnter();
+		Run(1200);
+		Shot("20e10_police_crash_denied");
+		Expect("police: a failed password sets off the alarm", gClient.TakeAlarm());
+		Expect("police: the alarm is only taken once", !gClient.TakeAlarm());
+		GoTo("network.sapd.sa/#home", 700);
+	}
+
 	GoTo("hidden.onion", 1000);
 	Shot("20f_dark_web_refused_from_police");
 	Expect("session: the dark web is refused from a police computer", !onDarkWebPage());

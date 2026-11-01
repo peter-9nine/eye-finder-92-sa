@@ -57,6 +57,7 @@ private:
 	void SendSession();
 	void UpdateSessionClock();
 	void ChargeSession();
+	void RaiseAlarm();
 	bool EnsureHelper();
 	void UpdateMouse();
 	void UpdatePad();
@@ -100,6 +101,7 @@ private:
 	DWORD sessionLastTick_ = 0;
 	int sessionSecondsSent_ = -1;
 	std::string sessionReceipt_;
+	DWORD alarmCloseAt_ = 0;  // When the alarm closes the browser, or 0 if there's no alarm.
 
 	const PadInput* pad_ = nullptr;
 	uint32_t padIgnored_ = 0;  // Buttons already held on arrival: they don't count until released.

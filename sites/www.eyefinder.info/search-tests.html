@@ -28,6 +28,9 @@
     await report(session + '.leak', names(await sa.searchSites('sasquatch')) || 'none');
     // The harness adds this site. An unlisted site is only reached by typing its address.
     await report(session + '.unlisted', names(await sa.searchSites('unlistedsearchtest')) || 'none');
+    // Only the police site can set off its alarm.
+    const alarm = await fetch('/_game/alarm', { method: 'POST', headers: { 'X-EyeFinder': '1' } });
+    await report(session + '.alarm', alarm.ok ? 'ALLOWED' : 'refused');
     await report(session + '.done', '1');
   })();
 </script>

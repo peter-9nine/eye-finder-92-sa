@@ -59,6 +59,7 @@ std::atomic<int64_t> gSessionId{ 0 };  // Changes each time a computer is used, 
 // An easter egg: a misspelled EyeFinder address offers a way onto the dark web from any computer,
 // until that computer's session ends. Only that site can open it.
 constexpr char kBackdoorSite[] = "www.eyefnder.info";
+constexpr char kPoliceSite[] = "network.sapd.sa";
 std::atomic<bool> gBackdoorOpen{ false };
 bool gCloseTabsOnSession = false;
 int gModemEffect = 1;  // See EventType::ModemEffect.
@@ -527,6 +528,13 @@ CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs:
 		// The list itself is a secret: it only exists on a dark web computer.
 		if (!SessionReaches(static_cast<int>(ef::SessionType::DarkWeb))) return JsonResponse(403, "{}");
 		return JsonResponse(200, BuildHiddenJson());
+	}
+	// The penalty for trying the police site's C.R.A.S.H. password. Only that site can ask for it, and
+	// the plugin decides what it does, so no page can choose an effect on the game.
+	if (path == "/_game/alarm" && request->GetMethod().ToString() == "POST") {
+		if (domain != kPoliceSite) return JsonResponse(403, "{}");
+		gHeader->alarm.store(1, std::memory_order_release);
+		return JsonResponse(200, "{}");
 	}
 	if (path == "/_game/backdoor" && domain == kBackdoorSite && request->GetMethod().ToString() == "POST") {
 		gBackdoorOpen.store(true, std::memory_order_relaxed);
@@ -1765,6 +1773,12 @@ void HandleEvent(const ef::Event& event) {
 		gSessionPrice = event.b;
 		gSessionSeconds = 0;
 		gSessionCost = 0;
+		SendSessionToShell();
+		break;
+
+	case ef::EventType::EndSession:
+		// Closing a tab destroys its view, which is what holds its back and forward history.
+		gCloseTabsOnSession = true;
 		SendSessionToShell();
 		break;
 

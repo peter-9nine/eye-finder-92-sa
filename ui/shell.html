@@ -514,7 +514,7 @@
   }
 
   function applySession(details) {
-    // Tabs from another kind of computer don't come along.
+    // Tabs from another kind of computer don't come along, and none outlast the end of a session.
     if (details.type !== session.type || details.closeTabs) {
       closeKeyboard(false);
       closeBin();

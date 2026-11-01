@@ -51,7 +51,7 @@ A bad entry is skipped and logged, and the rest still load. With no usable entri
 1. **Prompt:** `CheckForComputers` runs each frame while the browser is closed. Near a computer, it shows the prompt, naming L1 or TAB depending on `PadInput::InHands()`.
 2. **Opening:** `BeginOpening` takes the type and price from the computer, and `SendSession` sends `EventType::Session` and `SessionTime`. They're sent again if the helper restarts, for example after a resolution change.
 3. **While open:** `UpdateSessionClock` sends `SessionTime` every second. The clock only runs in `Phase::Open`, so fades and the pause menu are free.
-4. **Closing:** `FinishClosing` calls `ChargeSession`, which takes the money. The receipt goes through `MailSystem`'s help box queue, which retries, because `CHud::SetHelpMessage` silently refuses at times.
+4. **Closing:** `FinishClosing` calls `ChargeSession`, which takes the money. The receipt goes through `MailSystem`'s help box queue, which retries, because `CHud::SetHelpMessage` silently refuses at times. It also sends `EventType::EndSession`, which closes every tab, in every type of session and however the player left, including C.R.A.S.H.'s alarm and loading a game. Back and forward history lives in each tab's view, so it goes with them, and the next session starts at the desktop. Cookies and each site's `localStorage` stay, in Chromium's profile: the engine choice and the once-per-session intros rely on `localStorage`.
 
 Payment rules, in `SessionCost` and `ChargeSession`:
 
@@ -91,6 +91,18 @@ Add `session` to a site's `site.json`:
 **The check is in the helper, not the shell.** The desktop icons only open the site. Hiding an icon doesn't protect anything.
 
 The session lives in `gSessionType`, an atomic, because sites are served on another thread.
+
+## The police site
+
+`sites/network.sapd.sa` opens on a home page, and tabs along the top reach Records, Most Wanted, Dispatch, Evidence, Bulletins and C.R.A.S.H. In Records, pressing Search shows "Looking..." for a moment and then a list of matches, and a name opens its record, with a photo, Hangout, Wanted For and a colored status, as in GTA IV's police database. Its look comes from a black-and-white patrol car, and the home page's hero is the car's door.
+
+`records.js` holds its content, so adding a person, a piece of evidence or a dispatch call only means adding an entry there. `app.js` draws one page at a time, chosen by the address, so `#records/tenpenny` links straight to a record, `#results/<search>` to a list, and the back button works.
+
+Photos go in its `photos` folder as `<id>.jpg`, and a silhouette shows until there's one.
+
+Carl Johnson's record, Most Wanted and Dispatch read the live wanted level, zone and clock from `sa.state()`.
+
+**C.R.A.S.H.** asks for a password that no answer can satisfy. Trying one calls `POST /_game/alarm`, which sets `Header::alarm`, and `BrowserOverlay::RaiseAlarm` raises the player to 3 stars and closes the browser 5 seconds later. It's the one way a page can affect the game, so it's limited: only this site can call it, and the page can't choose what happens.
 
 ## The hidden folder
 
