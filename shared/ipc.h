@@ -8,7 +8,7 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 7;
+constexpr uint32_t kProtocol = 8;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
@@ -47,7 +47,8 @@ enum class EventType : uint32_t {
 	Quit,
 	PadKeyboard, // a = PadKeyboardAction
 	Session,     // a = SessionType, b = price per minute
-	SessionTime  // a = seconds, b = cost so far
+	SessionTime, // a = seconds, b = cost so far
+	ModemEffect  // The dial-up popup, for the harness's timing: a = 0 off, 1 rarely (the default), 2 always
 };
 
 // What a computer can reach, on top of the normal browser.

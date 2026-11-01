@@ -270,7 +270,22 @@
     return true;
   }
 
+  // The dial-up popup hides the page at first, and the intro shouldn't start until it can be seen.
+  const whenVisible = () => new Promise((resolve) => {
+    if (!document.hidden) return resolve();
+    const check = () => {
+      if (document.hidden) return;
+      document.removeEventListener('visibilitychange', check);
+      resolve();
+    };
+    document.addEventListener('visibilitychange', check);
+  });
+
+  let started = false;
+
   async function start() {
+    await whenVisible();
+    started = true;
     const { sessionId } = await sa.browser();
     if (needsIntro(sessionId)) await playIntro();
     showMain();
@@ -281,7 +296,7 @@
 
   // A tab left open stays loaded for the next visit, so check again when the computer comes back on.
   document.addEventListener('visibilitychange', async () => {
-    if (document.hidden || introRunning) return;
+    if (!started || document.hidden || introRunning) return;
     const { sessionId } = await sa.browser();
     if (needsIntro(sessionId)) {
       await playIntro();

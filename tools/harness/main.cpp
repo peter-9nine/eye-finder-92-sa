@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "AddressTypo.h"
 #include "BrowserClient.h"
 #include "EyeFinderApi.h"
 #include "KeyConfig.h"
@@ -30,9 +31,9 @@ constexpr int gWidth = 1280;
 constexpr int gHeight = 720;
 
 // Interface
-constexpr POINT kIconInternet = { 72, 72 };
-constexpr POINT kIconSecond = { 72, 194 };  // The session's own browser, or else Mail.
-constexpr POINT kIconBin = { 72, 317 };  // In a normal session.
+constexpr POINT kIconBin = { 72, 72 };
+constexpr POINT kIconInternet = { 72, 194 };
+constexpr POINT kIconSecond = { 72, 317 };  // The session's own browser, or else Mail.
 constexpr POINT kIconLogOff = { 72, 439 };  // In a normal session.
 constexpr POINT kBack = { 186, 51 };
 constexpr POINT kForward = { 226, 51 };
@@ -599,6 +600,40 @@ void TestLocations(const std::filesystem::path& modFolder) {
 	Expect("CEF: another version is refused", BrowserRuntimeProblem(wrong.wstring()).rfind("Wrong CEF version", 0) == 0);
 }
 
+void TestTypos() {
+	const std::string name = "eyefinder";
+	const auto check = [](const std::string& word, const char* what) {
+		for (const std::string& host : { "www." + word + ".info", word + ".info" }) {
+			if (!ef::IsEyeFinderTypo(host)) {
+				printf("FAIL: typo not recognized, %s: %s\n", what, host.c_str());
+				++gFailures;
+			}
+		}
+	};
+
+	// Every letter: missing, wrong, doubled, with a stray one added, and swapped with its neighbor.
+	for (size_t i = 0; i < name.size(); ++i) {
+		check(name.substr(0, i) + name.substr(i + 1), "missing letter");
+		std::string wrong = name;
+		wrong[i] = wrong[i] == 'x' ? 'q' : 'x';
+		check(wrong, "wrong letter");
+		check(name.substr(0, i) + name[i] + name.substr(i), "doubled letter");
+		check(name.substr(0, i) + 'x' + name.substr(i), "extra letter");
+		if (i + 1 < name.size() && name[i] != name[i + 1]) {
+			std::string swapped = name;
+			std::swap(swapped[i], swapped[i + 1]);
+			check(swapped, "swapped letters");
+		}
+	}
+
+	for (const char* host : { "eyefinder.info", "ww.eyefinder.info", "wwww.eyefinder.info", "www.eyefinder.inf", "www.eyefinder.ifno", "www.eyefinder.com", "eyefinder.net", "eyefindr.org", "WWW.EYEFNDER.INFO", "www.efinder.info" }) {
+		Expect((std::string("typo: ") + host).c_str(), ef::IsEyeFinderTypo(host));
+	}
+	for (const char* host : { "www.eyefinder.info", "WWW.EyeFinder.Info", "mail.eyefinder.info", "www.binco.sa", "www.google.com", "eyeliner.com", "www.finder.com", "hidden.onion", "localhost", "" }) {
+		Expect((std::string("not a typo: ") + host).c_str(), !ef::IsEyeFinderTypo(host));
+	}
+}
+
 void TestSessions() {
 	constexpr POINT kInsideTimer = { 1270, 14 };
 	constexpr POINT kPageTop = { 640, 130 };
@@ -621,6 +656,21 @@ void TestSessions() {
 		SyncMail();
 		return StoredValue(key);
 	};
+
+	// The dial-up popup: it hides the page, and then the page appears with the keyboard still its own.
+	{
+		constexpr POINT kDialTitle = { 800, 310 };
+		gClient.Send({ ef::EventType::ModemEffect, 0, 0, 2 });
+		Run(100);
+		GoTo("www.binco.sa", 350);
+		Shot("19a_dial_up");
+		ExpectPixel("dial-up: the popup shows while entering a page", kDialTitle, 0x000080);
+		Run(5000);
+		Shot("19b_dial_up_done");
+		Expect("dial-up: the page appears afterwards", (gLastShot[size_t(kDialTitle.y) * gWidth + kDialTitle.x] & 0xFFFFFF) != 0x000080);
+		gClient.Send({ ef::EventType::ModemEffect, 0, 0, 0 });
+		Run(100);
+	}
 
 	// A normal session: a timer, and neither restricted site.
 	start(ef::SessionType::Normal, 10);
@@ -713,6 +763,10 @@ void TestSessions() {
 		Expect("easter egg: a misspelled address reaches the parked page", !onDarkWebPage() && (gLastShot[size_t(kParkedQuestion.y) * gWidth + 180] & 0xFFFFFF) == 0xFFFFFF);
 	};
 	parked("eyefinder.com", "20c3a_easter_egg_alias");
+	parked("www.yefinder.info", "20c3a2_easter_egg_first_letter");
+	parked("www.eyefinde.info", "20c3a3_easter_egg_last_letter");
+	parked("www.eyefindeer.info", "20c3a4_easter_egg_extra_letter");
+	parked("www.eyeifnder.info", "20c3a5_easter_egg_swapped");
 	parked("www.eyefnder.info", "20c3b_easter_egg_parked");
 	Click(kParkedNo);
 	Run(1200);
@@ -738,10 +792,10 @@ void TestSessions() {
 	start(ef::SessionType::Police, 0);
 	Shot("20d_police_desktop");
 	ExpectPixel("session: the police desktop has no timer", kInsideTimer, kPoliceDesktop);
-	ExpectIconDrawn("police", { 72, 179 });
+	ExpectIconDrawn("police", { 72, 301 });
 
 	// A police computer's recycle bin has files, and they can be read.
-	Click({ 72, 439 });
+	Click(kIconBin);
 	Run(300);
 	Shot("20d2_police_bin");
 	Click(kBinFirstFile);
@@ -770,7 +824,7 @@ void TestSessions() {
 	start(ef::SessionType::DarkWeb, 0);
 	Shot("20g_dark_web_desktop");
 	ExpectPixel("session: the dark web desktop has no timer", kInsideTimer, kDarkDesktop);
-	ExpectIconDrawn("dark web", { 72, 179 });
+	ExpectIconDrawn("dark web", { 72, 301 });
 	Click(kIconSecond);
 	Run(2500);
 	Shot("20h_dark_web_intro");
@@ -912,6 +966,7 @@ int wmain(int argc, wchar_t** argv) {
 		return 1;
 	}
 	gClient.Send({ ef::EventType::Show });
+	gClient.Send({ ef::EventType::ModemEffect, 0, 0, 0 });
 	gClient.Send({ ef::EventType::MailChanged, 0, 0, gStore.UnreadCount() });
 
 	{
@@ -942,9 +997,9 @@ int wmain(int argc, wchar_t** argv) {
 	Shot("01_desktop");
 	ExpectPixel("desktop", { 1200, 400 }, kDesktopColor);
 	// A missing image leaves the desktop's color in its place, and nothing else would notice.
-	ExpectIconDrawn("Internet", { 72, 57 });
-	ExpectIconDrawn("Mail", { 72, 179 });
-	ExpectIconDrawn("Recycle Bin", { 72, 301 });
+	ExpectIconDrawn("Recycle Bin", { 72, 57 });
+	ExpectIconDrawn("Internet", { 72, 179 });
+	ExpectIconDrawn("Mail", { 72, 301 });
 	ExpectIconDrawn("Log Off", { 72, 423 });
 
 	// Desktop -> browser with its home page.
@@ -1010,6 +1065,22 @@ int wmain(int argc, wchar_t** argv) {
 	Click(kDropdownThird);
 	Run(300);
 	Shot("05_picked");
+
+	// A hand over links and buttons, and an arrow elsewhere. Pages show an arrow over buttons by default.
+	{
+		const auto cursorAt = [](POINT point) {
+			gCursorX = float(point.x);
+			gCursorY = float(point.y);
+			gClient.Send({ ef::EventType::MouseMove, point.x, point.y });
+			Run(250);
+			return gClient.Cursor();
+		};
+		Expect("cursor: a hand over a page's button", cursorAt(kClickMe) == ef::CursorKind::Hand);
+		Shot("05a_hand_cursor");
+		Expect("cursor: a hand over the toolbar", cursorAt(kMailButton) == ef::CursorKind::Hand);
+		Expect("cursor: an arrow over empty page", cursorAt({ 1000, 240 }) == ef::CursorKind::Arrow);
+		Expect("cursor: a text cursor over a field", cursorAt(kTextField) == ef::CursorKind::IBeam);
+	}
 
 	TestKeyboard();
 
@@ -1088,7 +1159,16 @@ int wmain(int argc, wchar_t** argv) {
 	ExpectPixel("restored window", { 600, 15 }, kTitleBarColor);
 
 	// Mail: open, read, delete and receive a new one with the page open.
+	gClient.Send({ ef::EventType::Session, 0, 0, static_cast<int32_t>(ef::SessionType::Normal), 0 });
+	Run(100);
 	Click(kMailButton);
+	Run(1700);
+	Shot("13a_mail_logon");
+	ExpectPixel("mail: the logon screen shows first", { 200, 600 }, 0x008080);
+	ExpectPixel("mail: the logon screen hides the inbox", { 188, 168 }, 0x008080);
+	Run(5000);
+	Shot("13b_mail_after_logon");
+	Expect("mail: the logon screen goes away", (gLastShot[size_t(600) * gWidth + 200] & 0xFFFFFF) != 0x008080);
 	RunWithMail(1800);
 	Shot("15_mail_list");
 	Click(kFirstMailRow);
@@ -1253,6 +1333,7 @@ int wmain(int argc, wchar_t** argv) {
 	TestMailFiles();
 	TestApi();
 	TestLocations(std::filesystem::path(helper).parent_path().parent_path());
+	TestTypos();
 
 	const DWORD stopStart = GetTickCount();
 	gClient.Stop();

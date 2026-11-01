@@ -33,6 +33,7 @@
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_message_router.h"
 #include "include/wrapper/cef_stream_resource_handler.h"
+#include "AddressTypo.h"
 #include "ipc.h"
 
 namespace {
@@ -60,6 +61,7 @@ std::atomic<int64_t> gSessionId{ 0 };  // Changes each time a computer is used, 
 constexpr char kBackdoorSite[] = "www.eyefnder.info";
 std::atomic<bool> gBackdoorOpen{ false };
 bool gCloseTabsOnSession = false;
+int gModemEffect = 1;  // See EventType::ModemEffect.
 
 bool SessionReaches(int requiredSession) {
 	if (gSessionType.load(std::memory_order_relaxed) == requiredSession) return true;
@@ -83,7 +85,7 @@ bool IsAllowedUrl(const std::string& url) {
 
 	std::string host = CefString(&parts.host).ToString();
 	for (char& c : host) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-	return gLocalDomains.count(host) != 0;
+	return gLocalDomains.count(host) != 0 || ef::IsEyeFinderTypo(host);
 }
 ef::Header* gHeader = nullptr;
 HANDLE gShellReady = nullptr;
@@ -630,11 +632,29 @@ private:
 	IMPLEMENT_REFCOUNTING(SiteHandlerFactory);
 };
 
+// The easter egg: answers for any host that's a misspelling of EyeFinder's, and leaves all others alone.
+// There's no way to register every misspelling by name, so this is registered for all hosts.
+class TypoHandlerFactory : public CefSchemeHandlerFactory {
+public:
+	explicit TypoHandlerFactory(fs::path site) : site_(new SiteHandlerFactory(std::move(site), false, -1)) {}
+
+	CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& scheme, CefRefPtr<CefRequest> request) override {
+		CefURLParts parts;
+		if (!CefParseURL(request->GetURL(), parts) || !ef::IsEyeFinderTypo(CefString(&parts.host).ToString())) return nullptr;
+		return site_->Create(browser, frame, scheme, request);
+	}
+
+private:
+	CefRefPtr<SiteHandlerFactory> site_;
+
+	IMPLEMENT_REFCOUNTING(TypoHandlerFactory);
+};
+
 // --- Commands from the interface ---
 void OpenTab(int id, const std::string& url);
 void CloseTab(int id);
 void ActivateTab(int id);
-void SetLayout(int x, int y, int width, int height, bool visible);
+void SetLayout(int x, int y, int width, int height, bool visible, bool keepFocus);
 
 class ShellQueryHandler : public CefMessageRouterBrowserSide::Handler {
 public:
@@ -772,7 +792,7 @@ public:
 	}
 
 	// --- Navigation ---
-	bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool userGesture, bool) override {
+	bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool userGesture, bool isRedirect) override {
 		const std::string url = request->GetURL().ToString();
 
 		if (IsShell()) {
@@ -789,6 +809,16 @@ public:
 			// Only ask if the player requested it: a page can't keep insisting by itself.
 			if (frame->IsMain() && userGesture) AskForInternet(url, false);
 			return true;
+		}
+
+		// The shell shows its dial-up popup for pages, and not for what loads inside them.
+		if (frame->IsMain() && !isRedirect) {
+			CefRefPtr<CefDictionaryValue> details = CefDictionaryValue::Create();
+			details->SetInt("id", tabId_);
+			details->SetString("url", url);
+			CefRefPtr<CefValue> value = CefValue::Create();
+			value->SetDictionary(details);
+			CallShell("onNavigate", value);
 		}
 		return false;
 	}
@@ -870,6 +900,14 @@ public:
 
 	void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int) override {
 		if (!IsShell() && frame->IsMain()) ApplyZoom();
+		// Browsers show an arrow over buttons unless a page says otherwise, and this mod shows a hand.
+		// A constructed sheet still works on sites whose security rules forbid adding styles.
+		if (!IsShell()) {
+			frame->ExecuteJavaScript(
+				"(function () { const sheet = new CSSStyleSheet();"
+				" sheet.replaceSync(':where(button, select, summary, label, input[type=button], input[type=submit], input[type=reset], input[type=checkbox], input[type=radio]):not(:disabled) { cursor: pointer; }');"
+				" document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]; })()", "", 0);
+		}
 		if (IsShell() && frame->IsMain()) {
 			CefRefPtr<CefValue> value = CefValue::Create();
 			value->SetInt(gUnreadMail);
@@ -975,6 +1013,7 @@ void SendSessionToShell() {
 	details->SetInt("price", gSessionPrice);
 	details->SetInt("seconds", gSessionSeconds);
 	details->SetInt("cost", gSessionCost);
+	details->SetInt("modem", gModemEffect);
 	details->SetBool("closeTabs", gCloseTabsOnSession);
 	gCloseTabsOnSession = false;
 	CefRefPtr<CefValue> value = CefValue::Create();
@@ -1129,7 +1168,8 @@ void ActivateTab(int id) {
 	ComposeAndPublish();
 }
 
-void SetLayout(int x, int y, int width, int height, bool visible) {
+// keepFocus is for hiding a tab only for a moment, so that the keyboard is still its own afterwards.
+void SetLayout(int x, int y, int width, int height, bool visible, bool keepFocus) {
 	const bool resized = width != gContentRect.width || height != gContentRect.height;
 	gContentRect = CefRect(x, y, width, height);
 	gContentVisible = visible;
@@ -1140,7 +1180,12 @@ void SetLayout(int x, int y, int width, int height, bool visible) {
 		}
 	}
 	ApplyTabVisibility();
-	if (!visible) SetKeyboardTarget(gShell.get());
+	if (!visible && !keepFocus) SetKeyboardTarget(gShell.get());
+	if (visible) {
+		if (View* tab = ActiveTabView()) {
+			if (tab->Host()) tab->Host()->Invalidate(PET_VIEW);
+		}
+	}
 	ComposeAndPublish();
 }
 
@@ -1252,7 +1297,7 @@ bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 	CefRefPtr<CefBrowser> page = active ? active->Browser() : nullptr;
 
 	if (command == "layout") {
-		SetLayout(message->GetInt("x"), message->GetInt("y"), message->GetInt("w"), message->GetInt("h"), message->GetBool("visible"));
+		SetLayout(message->GetInt("x"), message->GetInt("y"), message->GetInt("w"), message->GetInt("h"), message->GetBool("visible"), message->HasKey("keepFocus") && message->GetBool("keepFocus"));
 	}
 	else if (command == "openTab") {
 		OpenTab(message->GetInt("id"), message->GetString("url").ToString());
@@ -1464,6 +1509,11 @@ private:
 		// The mod's go last: if two share a name, they win.
 		RegisterSitesIn(PublicSitesFolder(), false);
 		RegisterSitesIn(SystemSitesFolder(), true);
+
+		// With no domain, it's asked about any host that wasn't registered by name above.
+		CefRefPtr<TypoHandlerFactory> typos = new TypoHandlerFactory(SystemSitesFolder() / kBackdoorSite);
+		CefRegisterSchemeHandlerFactory("https", "", typos);
+		CefRegisterSchemeHandlerFactory("http", "", typos);
 	}
 
 	static void RegisterSitesIn(const fs::path& sites, bool isSystem) {
@@ -1480,23 +1530,6 @@ private:
 	}
 
 	static void RegisterSite(const fs::path& folder, bool isSystem, int requiredSession) {
-		// Other addresses for the same site, with and without www, for the mod's own sites only.
-		if (isSystem) {
-			CefRefPtr<CefDictionaryValue> details = ReadJsonObject(folder / L"site.json");
-			if (details && details->HasKey("aliases") && details->GetType("aliases") == VTYPE_LIST) {
-				CefRefPtr<CefListValue> aliases = details->GetList("aliases");
-				CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(folder, false, requiredSession);
-				for (size_t i = 0; i < aliases->GetSize(); ++i) {
-					const std::string alias = aliases->GetString(i).ToString();
-					for (const std::string& host : { alias, "www." + alias }) {
-						gLocalDomains.insert(host);
-						CefRegisterSchemeHandlerFactory("https", host, factory);
-						CefRegisterSchemeHandlerFactory("http", host, factory);
-					}
-				}
-			}
-		}
-
 		{
 			const CefString domain = folder.filename().wstring();
 			std::string lowered = domain.ToString();
@@ -1676,6 +1709,7 @@ void HandleEvent(const ef::Event& event) {
 	case ef::EventType::Show:
 		gOverlayVisible = true;
 		if (gShell->Host()) {
+			gShell->Host()->SetAudioMuted(false);
 			gShell->Host()->WasHidden(false);
 			gShell->Host()->Invalidate(PET_VIEW);
 		}
@@ -1695,7 +1729,10 @@ void HandleEvent(const ef::Event& event) {
 		// With the game in front, pages must not keep playing sound.
 		gOverlayVisible = false;
 		if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(false);
-		if (gShell->Host()) gShell->Host()->WasHidden(true);
+		if (gShell->Host()) {
+			gShell->Host()->SetAudioMuted(true);  // The modem sound.
+			gShell->Host()->WasHidden(true);
+		}
 		for (auto& [id, tab] : gTabs) {
 			if (tab->Host()) tab->Host()->SetAudioMuted(true);
 		}
@@ -1728,6 +1765,11 @@ void HandleEvent(const ef::Event& event) {
 		gSessionPrice = event.b;
 		gSessionSeconds = 0;
 		gSessionCost = 0;
+		SendSessionToShell();
+		break;
+
+	case ef::EventType::ModemEffect:
+		gModemEffect = event.a;
 		SendSessionToShell();
 		break;
 

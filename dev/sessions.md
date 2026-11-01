@@ -117,11 +117,19 @@ Both webs search the same way: `rankMatches` in `ui/sa.js` needs every word to a
 
 `sites/hidden.onion/index.html` plays a typed prompt the first time it's opened in each session. `sa.browser()` returns a `sessionId`, which the helper changes on each `EventType::Session`, and the page keeps the last one it played for in `localStorage`. It checks again on `visibilitychange`, because a tab left open from the last session is already loaded. A key press or click skips it. It opens straight, with the commands to connect to the Area 69 server, from `CONNECTING`. Then the humor follows, from `CONFESSIONS`, `THOUGHTS` and `ANSWERS`.
 
+## The 1992 effects
+
+**Dial-up popup.** `OnBeforeBrowse` tells the shell about each page a tab enters, and `startDial` in `ui/shell.html` sometimes shows a popup with a slow speed and San Andreas flavor, from `DIAL_STEPS` and `DIAL_SPEEDS`. It's meant as a rare touch of nostalgia, so `DIAL_CHANCE` is 1 page in 10, and moving within one site never shows it. It lasts 1.5 to 2.7 seconds, and longer if the page still hasn't loaded, up to `DIAL_LONGEST_MS` more. `playDialSound` synthesizes the modem handshake, with no audio files, and the helper mutes the shell on `Hide` so that it stops with the pause menu. The page isn't delayed: it loads hidden, through the layout message with `keepFocus`, so the keyboard still belongs to it afterwards. Only main frames count, so what loads inside a page doesn't bring the popup back. The harness turns it off with `EventType::ModemEffect` because its clicks need pages at once, and one test forces it on with `a = 2`.
+
+Pages with an intro wait until they can be seen, so that they don't play it behind the popup.
+
+**Mail logon.** `playLogon` in `sites/mail.eyefinder.info/index.html` types CJ's details into a logon screen, the first time mail opens in each session, using the same `sessionId` as the dark web's intro. It's only for show, and nothing checks the details. A key press or click skips it.
+
 ## The easter egg
 
 **Spoiler, so don't put this anywhere players read it.** A misspelled EyeFinder address lands on `sites/www.eyefnder.info`, a dull parked-domain page that asks "Did you mean www.eyefinder.info?". Answering "No" opens the dark web from any computer.
 
-- **The typos** are in `aliases` in that site's `site.json`, which only the mod's own sites can use. Each works with and without `www.`. To catch another typo, add it there.
+- **The typos** are recognized by `IsEyeFinderTypo` in `shared/AddressTypo.h`, not listed: any one letter missing, wrong, extra or swapped, and two for `.info`, with or without `www.`. Wrong endings count too, like `.inf` or `.com`. It's stricter on `.com`, `.net` and `.org`, so that real sites such as `eyeliner.com` keep working. `TypoHandlerFactory` is registered with no domain, so it's asked about every host without a site of its own, and it keeps the address the player typed.
 - **The way in** is `POST /_game/backdoor`, which only that site can call. It sets `gBackdoorOpen`, and `SessionReaches` then allows dark web sites and `/_game/hidden.json`.
 - **It ends with the session.** The next `EventType::Session` closes it, and tells the shell to close every tab through `closeTabs`.
 - **Nothing else changes.** The player's still in a normal session, so the desktop has no dark web icon, and the timer keeps charging.

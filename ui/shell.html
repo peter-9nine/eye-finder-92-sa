@@ -97,6 +97,16 @@
   #binEmpty { padding: 10px; color: var(--dark); }
   #binStatus { flex: none; height: 24px; line-height: 20px; padding: 0 8px; margin: 0 6px 4px; border: 1px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font-size: 13px; }
 
+  /* The dial-up popup. The tab is hidden while it's up, because it's composited over the interface. */
+  #dial { position: fixed; left: 50%; top: 50%; width: 420px; max-width: calc(100vw - 16px); transform: translate(-50%, -50%); display: none; background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
+  #dialTitle { height: 26px; line-height: 26px; padding: 0 10px; color: #fff; background: #000080; font: bold 14px var(--title-font); }
+  #dialBody { padding: 12px 14px 10px; font-size: 13px; }
+  #dialHost { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dialStep { height: 18px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dialBar { height: 16px; margin-top: 8px; background: #fff; border: 2px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); }
+  #dialFill { width: 0; height: 100%; background: repeating-linear-gradient(90deg, #000080 0 9px, transparent 9px 11px); }
+  #dialSpeed { margin-top: 6px; font-family: "Courier New", monospace; }
+
   /* On-screen keyboard for the pad. The helper composites its rectangle over the tab. */
   #keyboard { position: fixed; bottom: 0; left: 50%; width: min(100vw, calc(100vh * 4 / 3)); transform: translateX(-50%); display: none; flex-direction: column; gap: 0.8vh; padding-bottom: 0.8vh; background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
   #kbTitle { flex: none; height: 3.6vh; line-height: 3.6vh; padding: 0 10px; color: #fff; background: linear-gradient(90deg, #000080, #1084d0); font: bold 2.1vh/3.6vh var(--title-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -120,11 +130,11 @@
 <body>
 <div id="desktop">
   <div id="desktopIcons">
+    <button class="icon" id="iconBin" title="Recycle Bin"><img src="icons/recycle_bin.png" alt="">Recycle Bin</button>
     <button class="icon" id="iconInternet" title="Internet"><img src="icons/browser_normal.png" alt="">Internet</button>
     <button class="icon" id="iconPolice" title="SAPD Network" style="display: none"><img src="icons/browser_pd.png" alt="">SAPD Network</button>
     <button class="icon" id="iconDarkWeb" title="Dark Web" style="display: none"><img src="icons/browser_dark_web.png" alt="">Dark Web</button>
     <button class="icon" id="iconMail" title="Mail"><img src="icons/email.png" alt="">Mail<span class="badge" id="desktopBadge"></span></button>
-    <button class="icon" id="iconBin" title="Recycle Bin"><img src="icons/recycle_bin.png" alt="">Recycle Bin</button>
     <button class="icon" id="iconLogOff" title="Log Off"><img src="icons/log_off.png" alt="">Log Off</button>
   </div>
   <div id="sessionLabel"></div>
@@ -180,6 +190,16 @@
   </div>
 </div>
 
+<div id="dial" role="status">
+  <div id="dialTitle">EyeFinder Dial-Up Networking</div>
+  <div id="dialBody">
+    <div id="dialHost"></div>
+    <div id="dialStep"></div>
+    <div id="dialBar"><div id="dialFill"></div></div>
+    <div id="dialSpeed"></div>
+  </div>
+</div>
+
 <div id="binWindow" role="dialog" aria-labelledby="binTitleText">
   <div id="binTitle"><span id="binTitleText">Recycle Bin</span><button class="bevel" id="binClose" title="Close">X</button></div>
   <div id="binBody">
@@ -217,6 +237,7 @@
   let pendingInternet = null;  // { url, newTab } while the warning is open
   let session = { type: 'normal', price: 0, seconds: 0, cost: 0 };
   let binOpen = false;
+  let dial = null;  // { start, until, timer } while the dial-up popup is up
 
   const activeTab = () => tabs.find((tab) => tab.id === activeId);
 
@@ -225,7 +246,8 @@
     send({
       cmd: 'layout',
       x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height),
-      visible: windowState === 'open' && tabs.length > 0 && !pendingInternet && !binOpen,
+      visible: windowState === 'open' && tabs.length > 0 && !pendingInternet && !binOpen && !dial,
+      keepFocus: !!dial,
     });
   }
 
@@ -290,6 +312,152 @@
   }
 
   const openMail = () => openOnce(MAIL);
+
+  // --- Dial-up popup ---
+  // It's 1992, so every page takes a moment. The page really loads underneath, and only appears afterwards.
+  const DIAL_STEPS = [
+    'Dialing 555-0192, Los Santos Telephone Co...',
+    'Waiting for Big Smoke to get off the line...',
+    'Routing through the Mount Chiliad tower...',
+    'Handshaking with the Las Venturas exchange...',
+    'San Fierro fog on the line, retrying...',
+    'Asking Grove Street for a dial tone...',
+    'Negotiating with the Whetstone relay...',
+    'Somebody picked up the phone in Fort Carson...',
+    'Rerouting around the Bone County outage...',
+    'Sending packets down Interstate 25...',
+  ];
+  const DIAL_SPEEDS = [1200, 2400, 2400, 4800, 9600, 9600, 14400];
+  const DIAL_LONGEST_MS = 6000;  // After this, a slow real site just appears while it's still loading.
+
+  // A rare treat, not a toll: most pages just open, and moving around one site never shows it.
+  const DIAL_CHANCE = 0.1;
+  const hostOf = (url) => {
+    try { return new URL(url).hostname; } catch (error) { return url; }
+  };
+
+  function shouldDial(url) {
+    if (session.modem === 0) return false;
+    if (session.modem === 2) return true;
+    const tab = activeTab();
+    if (tab && tab.url !== url && hostOf(tab.url) === hostOf(url)) return false;
+    return Math.random() < DIAL_CHANCE;
+  }
+
+  // The sound of a modem connecting, made here with no files: it dials, the other end answers with
+  // a tone, they warble at each other, and then it's the hiss of data until the popup closes.
+  let dialAudio = null;
+
+  function playDialSound() {
+    try {
+      dialAudio = dialAudio || new AudioContext();
+      dialAudio.resume();
+      const now = dialAudio.currentTime;
+
+      const master = dialAudio.createGain();
+      master.gain.value = 0.07;
+      master.connect(dialAudio.destination);
+
+      const nodes = [];
+      const tone = (frequency, start, end, type = 'sine') => {
+        const oscillator = dialAudio.createOscillator();
+        oscillator.type = type;
+        oscillator.frequency.value = frequency;
+        oscillator.connect(master);
+        oscillator.start(now + start);
+        oscillator.stop(now + end);
+        nodes.push(oscillator);
+      };
+
+      // Dialing: the two real tones of each digit on a phone keypad, for 555-0192.
+      const KEYPAD = { 5: [770, 1336], 0: [941, 1336], 1: [697, 1209], 9: [852, 1477], 2: [697, 1336] };
+      let time = 0;
+      for (const digit of [5, 5, 5, 0, 1, 9, 2]) {
+        tone(KEYPAD[digit][0], time, time + 0.055);
+        tone(KEYPAD[digit][1], time, time + 0.055);
+        time += 0.08;
+      }
+
+      // The answer tone, then the two modems warbling.
+      time += 0.05;
+      tone(2100, time, time + 0.3);
+      time += 0.33;
+      for (let i = 0; i < 6; i++) {
+        tone(i % 2 ? 2002 : 1375, time, time + 0.05, 'triangle');
+        time += 0.05;
+      }
+
+      // The hiss of data, which carries on until the popup closes.
+      const length = dialAudio.sampleRate;
+      const buffer = dialAudio.createBuffer(1, length, dialAudio.sampleRate);
+      const samples = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) samples[i] = Math.random() * 2 - 1;
+      const hiss = dialAudio.createBufferSource();
+      hiss.buffer = buffer;
+      hiss.loop = true;
+      const band = dialAudio.createBiquadFilter();
+      band.type = 'bandpass';
+      band.frequency.value = 1800;
+      band.Q.value = 0.8;
+      hiss.connect(band).connect(master);
+      hiss.start(now + time);
+      nodes.push(hiss);
+
+      return () => {
+        const end = dialAudio.currentTime;
+        master.gain.setTargetAtTime(0, end, 0.02);
+        for (const node of nodes) {
+          try { node.stop(end + 0.1); } catch (error) {}
+        }
+      };
+    }
+    catch (error) {
+      // Without sound, the popup still works.
+      return null;
+    }
+  }
+
+  function stopDial() {
+    if (!dial) return;
+    clearInterval(dial.timer);
+    if (dial.stopSound) dial.stopSound();
+    dial = null;
+    byId('dial').style.display = 'none';
+    sendLayout();
+  }
+
+  function updateDial() {
+    const now = Date.now();
+    const tab = activeTab();
+    const done = now >= dial.until;
+    if (done && (!tab || !tab.loading || now >= dial.until + DIAL_LONGEST_MS)) {
+      stopDial();
+      return;
+    }
+
+    byId('dialFill').style.width = Math.min(100, (now - dial.start) / (dial.until - dial.start) * 100) + '%';
+    if (now >= dial.nextStep) {
+      dial.nextStep = now + 700 + Math.random() * 500;
+      byId('dialStep').textContent = DIAL_STEPS[Math.floor(Math.random() * DIAL_STEPS.length)];
+      const speed = DIAL_SPEEDS[Math.floor(Math.random() * DIAL_SPEEDS.length)];
+      byId('dialSpeed').textContent = 'Speed: ' + speed.toLocaleString('en-US') + ' bps   Received: ' + Math.floor((now - dial.start) * speed / 80000) + ' KB';
+    }
+  }
+
+  function startDial(url) {
+    stopDial();
+    if (!shouldDial(url)) return;
+
+    byId('dialHost').textContent = 'Connecting to ' + hostOf(url);
+
+    // Long enough to hear the handshake, which is the point, and no longer.
+    const start = Date.now();
+    dial = { start, until: start + 1500 + Math.random() * 1200, nextStep: 0, timer: null, stopSound: playDialSound() };
+    updateDial();
+    dial.timer = setInterval(updateDial, 120);
+    byId('dial').style.display = 'block';
+    sendLayout();
+  }
 
   // --- Recycle bin ---
   // Its contents depend on the computer. They're always inserted as text.
@@ -381,6 +549,7 @@
   }
 
   function activateTab(id) {
+    stopDial();
     activeId = id;
     byId('address').blur();
     send({ cmd: 'activateTab', id });
@@ -389,6 +558,7 @@
   }
 
   function closeTab(id) {
+    if (id === activeId) stopDial();
     const index = tabs.findIndex((tab) => tab.id === id);
     if (index < 0) return;
     tabs.splice(index, 1);
@@ -432,6 +602,7 @@
 
   // It always asks: there's no "don't ask again".
   function askForInternet(url, newTab) {
+    stopDial();
     closeKeyboard(false);
     pendingInternet = { url, newTab };
     byId('alertReason').textContent = url
@@ -694,6 +865,7 @@
       render();
     },
     onBlocked(details) { askForInternet(details.url, details.newTab); },
+    onNavigate(details) { if (details.id === activeId) startDial(details.url); },
     onMail(unread) {
       for (const badge of [byId('desktopBadge'), byId('toolbarBadge')]) {
         badge.textContent = unread > 99 ? '99+' : unread;

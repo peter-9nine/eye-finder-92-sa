@@ -87,8 +87,52 @@ void DrawArrow(IDirect3DDevice9* device, float x, float y, D3DCOLOR color) {
 	device->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 5, fan, sizeof(ColorVertex));
 }
 
+// The pointing hand, one character per pixel: # is the outline, o the fill. The fingertip is the hot spot.
+void DrawHand(IDirect3DDevice9* device, float x, float y) {
+	static constexpr const char* kRows[] = {
+		"     ##        ",
+		"    #oo#       ",
+		"    #oo#       ",
+		"    #oo#       ",
+		"    #oo###     ",
+		"    #oo#oo###  ",
+		"    #oo#oo#oo# ",
+		" ## #oo#oo#oo##",
+		"#oo##ooooooo#o#",
+		"#ooo#oooooooooo#",
+		" #ooooooooooooo#",
+		"  #oooooooooooo#",
+		"  #ooooooooooo# ",
+		"   #oooooooooo# ",
+		"    #oooooooo#  ",
+		"    #oooooooo#  ",
+		"    ##########  ",
+	};
+	constexpr float kHotSpotX = 6.0f;
+
+	int row = 0;
+	for (const char* pixels : kRows) {
+		for (int column = 0; pixels[column]; ) {
+			const char kind = pixels[column];
+			int end = column + 1;
+			while (pixels[end] == kind) ++end;
+			if (kind != ' ') {
+				const float left = x - kHotSpotX + column;
+				DrawRect(device, left, y + row, left + (end - column), y + row + 1.0f, kind == '#' ? D3DCOLOR_XRGB(0, 0, 0) : D3DCOLOR_XRGB(255, 255, 255));
+			}
+			column = end;
+		}
+		++row;
+	}
+}
+
 void DrawCursor(IDirect3DDevice9* device, float x, float y, ef::CursorKind cursor) {
 	PrepareColorDraw(device);
+
+	if (cursor == ef::CursorKind::Hand) {
+		DrawHand(device, x, y);
+		return;
+	}
 
 	if (cursor == ef::CursorKind::IBeam) {
 		DrawRect(device, x - 2, y - 10, x + 3, y + 11, D3DCOLOR_XRGB(255, 255, 255));
@@ -96,15 +140,13 @@ void DrawCursor(IDirect3DDevice9* device, float x, float y, ef::CursorKind curso
 		return;
 	}
 
-	// For now the hand is the arrow in yellow. The final cursors will come with the interface.
-	const D3DCOLOR fill = cursor == ef::CursorKind::Hand ? D3DCOLOR_XRGB(255, 220, 60) : D3DCOLOR_XRGB(255, 255, 255);
 	// The outline is offset black copies, so it shows on any background.
 	for (int dy = -1; dy <= 1; ++dy) {
 		for (int dx = -1; dx <= 1; ++dx) {
 			if (dx != 0 || dy != 0) DrawArrow(device, x + dx, y + dy, D3DCOLOR_XRGB(0, 0, 0));
 		}
 	}
-	DrawArrow(device, x, y, fill);
+	DrawArrow(device, x, y, D3DCOLOR_XRGB(255, 255, 255));
 }
 
 }  // namespace

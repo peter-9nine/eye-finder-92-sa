@@ -7,6 +7,8 @@
 - **Keyboard:** comes from a window procedure subclass, `BrowserOverlay::WindowProc`. `WM_KEYUP` also reaches the game, so that a key held on opening doesn't stick. Escape reaches the game too, because it opens the pause menu.
 - **Focus:** navigating can replace Chromium's internal widget, which then has no focus and silently refuses to open dropdowns. So the helper reasserts focus on every click.
 
+**The cursor** is drawn by `OverlayRenderer`, as an arrow, a pointing hand or a text cursor, depending on what Chromium reports for the view under it. Browsers show an arrow over buttons by default, so `OnLoadEnd` adds a low-priority style to every page that makes them show a hand. A page's own `cursor` style still wins.
+
 Shortcuts such as Alt+Left, F5 and Ctrl+Tab are handled in `HandleShortcut` in the helper, and the controller reuses them.
 
 ## Controller
