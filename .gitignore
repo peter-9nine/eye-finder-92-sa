@@ -28,6 +28,9 @@ third_party/
 helper/build/
 tools/harness/build/
 
+# Release package, from tools\package.ps1
+dist/
+
 # Editor temp files
 *.TMP
 *~RF*.TMP

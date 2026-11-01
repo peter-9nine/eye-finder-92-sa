@@ -16,23 +16,23 @@
   html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; cursor: default; }
   body { font: 14px var(--ui-font); color: #000; background: #037575; }
 
-  /* Desktop: the original art, with the clickable areas on top. */
-  #desktop { position: fixed; inset: 0; background: url("img/desktop.png") center / 100% 100% no-repeat; }
-  .icon { position: absolute; background: none; border: 0; padding: 0; cursor: pointer; outline: 0; }
-  .icon:hover, .icon:focus-visible { outline: 2px dotted #fff; outline-offset: 2px; }
-  #iconHopes { left: 1.6%; top: 2.8%; width: 9.4%; height: 16.2%; }
-  #iconInternet { left: 29.5%; top: 37.8%; width: 8.9%; height: 18.7%; }
-  #iconLogOff { left: 60.8%; top: 64%; width: 8.3%; height: 18.6%; }
-
-  #iconMail { position: absolute; left: 2.2%; top: 23%; width: 8%; padding: 0; background: none; border: 0; outline: 0; color: #fff; font: 2.7vh Georgia, "Bookman Old Style", serif; text-align: center; cursor: pointer; }
-  #iconMail:hover, #iconMail:focus-visible { outline: 2px dotted #fff; outline-offset: 2px; }
-  #iconMail svg { display: block; width: 58%; margin: 0 auto 2px; shape-rendering: crispEdges; }
+  /* Desktop: a plain color for each kind of session, with the icons the session allows in a column. */
+  #desktop { position: fixed; inset: 0; background: #027676; }
+  body.session-pd #desktop { background: #12306b; }
+  body.session-dark_web #desktop { background: #101014; }
+  #desktopIcons { position: absolute; left: 1.5vh; top: 1.5vh; height: 86vh; display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, 17vh); grid-auto-columns: 17vh; }
+  .icon { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 0.5vh; padding: 0.8vh 0; background: none; border: 0; outline: 0; color: #fff; font: 2.3vh Georgia, "Bookman Old Style", serif; text-align: center; cursor: pointer; }
+  .icon img { width: 11vh; height: 11vh; }
+  .icon:hover, .icon:focus-visible { outline: 2px dotted #fff; outline-offset: -2px; }
   .badge { display: none; min-width: 1.5em; padding: 0 4px; background: #d00000; border: 1px solid #fff; color: #fff; font: bold 12px Tahoma, sans-serif; line-height: 16px; text-align: center; }
-  #iconMail .badge { position: absolute; top: 0; right: 16%; font-size: 2vh; line-height: 2.8vh; }
+  .icon .badge { position: absolute; top: 0.5vh; right: 16%; font-size: 2vh; line-height: 2.8vh; }
   #mail { position: relative; }
   #mail .badge { position: absolute; top: -5px; right: -5px; }
+  #sessionLabel { position: absolute; right: 2vh; bottom: 1.5vh; color: rgba(255, 255, 255, 0.55); font: bold 2.4vh var(--title-font); letter-spacing: 0.1em; }
 
-  #hopesNote { position: absolute; left: 1.6%; top: 19.5%; padding: 4px 8px; background: #ffffcc; border: 1px solid #000; font-size: 13px; display: none; }
+  /* What this session costs so far. It's over everything, and moves if the window leaves it no room. */
+  #sessionTimer { position: fixed; top: 3px; right: 6px; display: none; height: 22px; align-items: center; gap: 10px; padding: 0 8px; background: #000; border: 2px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); color: #3cff5a; font: bold 14px "Courier New", monospace; white-space: nowrap; }
+  #sessionCost { color: #ffd23c; }
 
   /* Minimized window: an icon at the bottom, like desktops of the time. */
   #minimized { position: absolute; left: 12px; bottom: 10px; width: 96px; padding: 4px; background: none; border: 0; color: #fff; font: 13px var(--ui-font); text-align: center; cursor: pointer; display: none; }
@@ -82,6 +82,21 @@
   #statusBar .bevel { height: 20px; min-width: 22px; font-size: 13px; line-height: 12px; }
   #zoomValue { width: 48px; }
 
+  /* Recycle bin. While it's open the tab is hidden, because it's composited over the interface. */
+  #binWindow { position: fixed; left: 50%; top: 50%; width: 100vh; max-width: calc(100vw - 16px); height: 66vh; transform: translate(-50%, -50%); display: none; flex-direction: column; background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
+  #binTitle { flex: none; height: 28px; display: flex; align-items: center; padding: 0 3px 0 10px; color: #fff; background: #000080; font: bold 15px var(--title-font); }
+  #binTitle span { flex: 1; }
+  #binClose { width: 22px; height: 20px; font-weight: bold; line-height: 14px; }
+  #binBody { flex: 1; min-height: 0; display: flex; gap: 6px; padding: 6px; }
+  #binFiles, #binPreview { min-width: 0; background: #fff; border: 2px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); overflow-y: auto; }
+  #binFiles { flex: 0 0 42%; }
+  #binPreview { flex: 1; padding: 10px; font: 15px "Courier New", monospace; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+  .binFile { display: block; width: 100%; padding: 8px 10px; background: none; border: 0; font: 15px var(--ui-font); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .binFile:hover { background: #dde6f5; }
+  .binFile.selected { background: #000080; color: #fff; }
+  #binEmpty { padding: 10px; color: var(--dark); }
+  #binStatus { flex: none; height: 24px; line-height: 20px; padding: 0 8px; margin: 0 6px 4px; border: 1px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font-size: 13px; }
+
   /* On-screen keyboard for the pad. The helper composites its rectangle over the tab. */
   #keyboard { position: fixed; bottom: 0; left: 50%; width: min(100vw, calc(100vh * 4 / 3)); transform: translateX(-50%); display: none; flex-direction: column; gap: 0.8vh; padding-bottom: 0.8vh; background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
   #kbTitle { flex: none; height: 3.6vh; line-height: 3.6vh; padding: 0 10px; color: #fff; background: linear-gradient(90deg, #000080, #1084d0); font: bold 2.1vh/3.6vh var(--title-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -104,23 +119,19 @@
 </head>
 <body>
 <div id="desktop">
-  <button class="icon" id="iconHopes" title="My Hopes and Dreams"></button>
-  <button class="icon" id="iconInternet" title="Internet"></button>
-  <button class="icon" id="iconLogOff" title="Log Off"></button>
-  <button id="iconMail" title="Mail">
-    <svg viewBox="0 0 32 24" aria-hidden="true">
-      <rect x="1" y="1" width="30" height="22" fill="#000"/>
-      <rect x="2" y="2" width="28" height="20" fill="#fff"/>
-      <rect x="2" y="2" width="28" height="2" fill="#ffffc8"/>
-      <path d="M3 4h2v1h2v1h2v1h2v1h2v1h2v1h2V9h2V8h2V7h2V6h2V5h2V4h2v2h-2v1h-2v1h-2v1h-2v1h-2v1h-2v1h-4v-1h-2v-1h-2V9H9V8H7V7H5V6H3z" fill="#000"/>
-      <path d="M3 19h2v-1h2v-1h2v-1h2v1H9v1H7v1H5v1H3zM29 19h-2v-1h-2v-1h-2v-1h-2v1h2v1h2v1h2v1h2z" fill="#808080"/>
-    </svg>
-    Mail
-    <span class="badge" id="desktopBadge"></span>
-  </button>
-  <div id="hopesNote">This folder is empty.</div>
+  <div id="desktopIcons">
+    <button class="icon" id="iconInternet" title="Internet"><img src="icons/browser_normal.png" alt="">Internet</button>
+    <button class="icon" id="iconPolice" title="SAPD Network" style="display: none"><img src="icons/browser_pd.png" alt="">SAPD Network</button>
+    <button class="icon" id="iconDarkWeb" title="Dark Web" style="display: none"><img src="icons/browser_dark_web.png" alt="">Dark Web</button>
+    <button class="icon" id="iconMail" title="Mail"><img src="icons/email.png" alt="">Mail<span class="badge" id="desktopBadge"></span></button>
+    <button class="icon" id="iconBin" title="Recycle Bin"><img src="icons/recycle_bin.png" alt="">Recycle Bin</button>
+    <button class="icon" id="iconLogOff" title="Log Off"><img src="icons/log_off.png" alt="">Log Off</button>
+  </div>
+  <div id="sessionLabel"></div>
   <button id="minimized"><span class="globe">www</span>Web Browser</button>
 </div>
+
+<div id="sessionTimer" title="Time in this session, and what you'll pay when you leave"><span id="sessionTime">00:00:00</span><span id="sessionCost">$0</span></div>
 
 <div id="window">
   <div id="titleBar">
@@ -169,6 +180,15 @@
   </div>
 </div>
 
+<div id="binWindow" role="dialog" aria-labelledby="binTitleText">
+  <div id="binTitle"><span id="binTitleText">Recycle Bin</span><button class="bevel" id="binClose" title="Close">X</button></div>
+  <div id="binBody">
+    <div id="binFiles"></div>
+    <div id="binPreview"></div>
+  </div>
+  <div id="binStatus"></div>
+</div>
+
 <div id="keyboard" role="dialog" aria-labelledby="kbTitle">
   <div id="kbTitle"></div>
   <textarea id="kbText" rows="1" spellcheck="false" autocomplete="off" aria-labelledby="kbTitle"></textarea>
@@ -176,9 +196,12 @@
   <div id="kbLegend"><b>Stick/D-pad</b>Move · <b>A/✕</b>Press · <b>X/□</b>Delete · <b>Y/△</b>Space · <b>LB/RB</b>Cursor · <b>L3</b>Shift · <b>Back</b>Go · <b>B/○</b>Close</div>
 </div>
 
+<script src="recycle_bin.js"></script>
 <script>
   const HOME = 'https://www.eyefinder.info/';
   const MAIL = 'https://mail.eyefinder.info/';
+  const POLICE_SITE = 'https://network.sapd.sa/';
+  const DARK_WEB_SITE = 'https://hidden.onion/';
   const MAX_TABS = 8;
   const byId = (id) => document.getElementById(id);
 
@@ -192,6 +215,8 @@
   let windowState = 'closed';  // closed, open or minimized
   let internet = false;
   let pendingInternet = null;  // { url, newTab } while the warning is open
+  let session = { type: 'normal', price: 0, seconds: 0, cost: 0 };
+  let binOpen = false;
 
   const activeTab = () => tabs.find((tab) => tab.id === activeId);
 
@@ -200,7 +225,7 @@
     send({
       cmd: 'layout',
       x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height),
-      visible: windowState === 'open' && tabs.length > 0 && !pendingInternet,
+      visible: windowState === 'open' && tabs.length > 0 && !pendingInternet && !binOpen,
     });
   }
 
@@ -208,6 +233,8 @@
     windowState = state;
     byId('window').style.display = state === 'open' ? 'flex' : 'none';
     byId('minimized').style.display = state === 'minimized' ? 'block' : 'none';
+    byId('sessionLabel').style.display = state === 'open' ? 'none' : '';
+    placeTimer();
     sendLayout();
   }
 
@@ -250,16 +277,98 @@
 
   const displayUrl = (url) => (url || '').replace(/^data:.*/, '');
 
-  // Mail only opens once: if there's already a tab, go back to it.
-  function openMail() {
-    const existing = tabs.find((tab) => (tab.url || '').startsWith(MAIL));
+  // A site like mail only opens once: if there's already a tab, go back to it.
+  function openOnce(site) {
+    const existing = tabs.find((tab) => (tab.url || '').startsWith(site));
     if (!existing) {
-      if (tabs.length < MAX_TABS) openTab(MAIL);
-      else { setWindowState('open'); send({ cmd: 'navigate', url: MAIL }); }
+      if (tabs.length < MAX_TABS) openTab(site);
+      else { setWindowState('open'); send({ cmd: 'navigate', url: site }); }
       return;
     }
     activateTab(existing.id);
     setWindowState('open');
+  }
+
+  const openMail = () => openOnce(MAIL);
+
+  // --- Recycle bin ---
+  // Its contents depend on the computer. They're always inserted as text.
+  function showBinFile(file, row) {
+    for (const other of byId('binFiles').children) other.classList.remove('selected');
+    row.classList.add('selected');
+    byId('binPreview').textContent = file.text;
+  }
+
+  function openBin() {
+    closeKeyboard(false);
+    const files = (window.RECYCLE_BIN || {})[session.type] || [];
+    const list = byId('binFiles');
+    list.textContent = '';
+    byId('binPreview').textContent = '';
+
+    for (const file of files) {
+      const row = document.createElement('button');
+      row.className = 'binFile';
+      row.textContent = file.name;
+      row.onclick = () => showBinFile(file, row);
+      list.appendChild(row);
+    }
+    if (!files.length) {
+      const empty = document.createElement('div');
+      empty.id = 'binEmpty';
+      empty.textContent = 'This folder is empty.';
+      list.appendChild(empty);
+    }
+    byId('binStatus').textContent = files.length + (files.length === 1 ? ' item' : ' items');
+
+    binOpen = true;
+    byId('binWindow').style.display = 'flex';
+    sendLayout();
+  }
+
+  function closeBin() {
+    if (!binOpen) return;
+    binOpen = false;
+    byId('binWindow').style.display = 'none';
+    sendLayout();
+  }
+
+  // --- Session ---
+  function placeTimer() {
+    const timer = byId('sessionTimer');
+    if (windowState !== 'open') {
+      timer.style.right = '';
+      return;
+    }
+    // Over the title bar, next to its buttons, when there's no free corner beside the window.
+    const free = window.innerWidth - byId('window').getBoundingClientRect().right;
+    timer.style.right = free < timer.offsetWidth + 12 ? '84px' : '';
+  }
+
+  function applySession(details) {
+    // Tabs from another kind of computer don't come along.
+    if (details.type !== session.type) {
+      closeKeyboard(false);
+      closeBin();
+      for (const tab of [...tabs]) closeTab(tab.id);
+      setWindowState('closed');
+    }
+    session = details;
+
+    document.body.className = 'session-' + session.type;
+    byId('iconPolice').style.display = session.type === 'pd' ? '' : 'none';
+    byId('iconDarkWeb').style.display = session.type === 'dark_web' ? '' : 'none';
+    byId('sessionLabel').textContent = session.type === 'pd' ? 'SAPD TERMINAL' : session.type === 'dark_web' ? 'UNTRACEABLE CONNECTION' : '';
+
+    const charged = session.type === 'normal' && session.price > 0;
+    byId('sessionTimer').style.display = charged ? 'flex' : 'none';
+    if (charged) {
+      const pad = (number) => String(number).padStart(2, '0');
+      const { seconds } = session;
+      byId('sessionTime').textContent = pad(Math.floor(seconds / 3600)) + ':' + pad(Math.floor(seconds / 60) % 60) + ':' + pad(seconds % 60);
+      byId('sessionCost').textContent = '$' + session.cost;
+      placeTimer();
+    }
   }
 
   function openTab(url) {
@@ -555,6 +664,7 @@
   // --- Calls from the helper ---
   window.ef = {
     keyboardOpen: openKeyboard,
+    onSession: applySession,
     keyboardCancel() { closeKeyboard(false); },
     // The address bar is the interface's only field.
     padClicked() {
@@ -607,11 +717,10 @@
   byId('iconMail').onclick = openMail;
   byId('mail').onclick = openMail;
   byId('iconLogOff').onclick = () => send({ cmd: 'logOff' });
-  byId('iconHopes').onclick = () => {
-    const note = byId('hopesNote');
-    note.style.display = 'block';
-    setTimeout(() => { note.style.display = 'none'; }, 2500);
-  };
+  byId('iconBin').onclick = openBin;
+  byId('binClose').onclick = closeBin;
+  byId('iconPolice').onclick = () => openOnce(POLICE_SITE);
+  byId('iconDarkWeb').onclick = () => openOnce(DARK_WEB_SITE);
   byId('minimized').onclick = () => setWindowState('open');
 
   // --- Window ---
@@ -622,6 +731,7 @@
   };
   byId('maximize').onclick = () => {
     byId('window').classList.toggle('maximized');
+    placeTimer();
     sendLayout();
   };
   byId('netMode').onclick = () => {

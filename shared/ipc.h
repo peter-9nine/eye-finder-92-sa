@@ -8,7 +8,7 @@
 namespace ef {
 
 constexpr uint32_t kMagic = 0x32394645;  // "EF92"
-constexpr uint32_t kProtocol = 6;
+constexpr uint32_t kProtocol = 7;
 constexpr uint32_t kSlots = 3;
 constexpr uint32_t kNewFrame = 0x80000000u;
 constexpr uint32_t kRingSize = 256;
@@ -19,6 +19,10 @@ constexpr uint32_t kValueOpRingSize = 16;
 constexpr uint32_t kValueKeySize = 64;
 constexpr uint32_t kValueTextSize = 1024;
 constexpr uint32_t kHeaderSize = 64 * 1024;
+
+// The CEF build the helper is compiled against. Players download it separately, so the plugin
+// checks it. Keep it the same as tools\fetch-cef.ps1, which the harness verifies.
+constexpr char kCefVersion[] = "150.0.23+g4ccc4ca+chromium-150.0.7871.287";
 
 // Same values as CEF's EVENTFLAG_*.
 constexpr uint32_t kModShift = 1u << 1;
@@ -41,8 +45,13 @@ enum class EventType : uint32_t {
 	Invalidate,  // asks for a repaint, for example after losing the D3D device
 	MailChanged, // a = unread emails
 	Quit,
-	PadKeyboard  // a = PadKeyboardAction
+	PadKeyboard, // a = PadKeyboardAction
+	Session,     // a = SessionType, b = price per minute
+	SessionTime  // a = seconds, b = cost so far
 };
+
+// What a computer can reach, on top of the normal browser.
+enum class SessionType : int32_t { Normal, Police, DarkWeb };
 
 // What the pad asks of the on-screen keyboard.
 enum class PadKeyboardAction : int32_t {

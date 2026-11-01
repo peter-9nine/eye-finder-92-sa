@@ -15,13 +15,14 @@ Run from this directory in PowerShell:
 ```powershell
 tools\build.ps1     # fetches CEF if needed, builds helper, harness and plugin
 tools\deploy.ps1    # copies to %GTA_SA_DIR%\modloader\EyeFinder92SA; refuses if the game is running
+tools\package.ps1   # builds dist\EyeFinder92SA.zip, the release: the whole mod without CEF
 ```
 
 Test without the game, using the harness (there's no other test or lint setup):
 
 ```powershell
 $root = (Get-Location).Path
-$url = "file:///$root/helper/build/Release/ui/shell.html" -replace '\\','/'
+$url = "file:///$root/helper/build/system/ui/shell.html" -replace '\\','/'
 tools\harness\build\Release\EyeFinderHarness.exe "$root\helper\build\Release\EyeFinderBrowser.exe" $url <output folder>
 ```
 
@@ -40,7 +41,7 @@ The helper runs several windowless Chromium views: one full-screen view for the 
 
 The shell gives orders through `window.cefQuery`, handled in `ShellQueryHandler`, and the helper calls back through `window.ef`. Only the shell may use this channel: `cefQuery` is injected only into `file:` pages, the handler checks the browser and URL, the shell can't navigate away, and tabs can't open `file:` URLs. Keep all of that when adding commands.
 
-`SiteHandlerFactory` serves each site folder as that domain over `http` and `https`, so adding a site means adding a folder. Sites are registered at helper startup. There are two kinds. The mod's own are in `sites/` here and `browser\\sites` when deployed, and `deploy.ps1` mirrors them. Public sites and ads are in `public/` here and next to the `.asi` when deployed, and `deploy.ps1` only adds to them, because they belong to the user. On a name clash the mod's site wins, and only the mod's `mail.eyefinder.info` gets the mail API.
+`SiteHandlerFactory` serves each site folder as that domain over `http` and `https`, so adding a site means adding a folder. Sites are registered at helper startup. There are two kinds. The mod's own are in `sites/` here and `system\sites` when deployed, and `deploy.ps1` mirrors them. Public sites and ads are in `public/` here and next to the `.asi` when deployed, and `deploy.ps1` only adds to them, because they belong to the user. On a name clash the mod's site wins, and only the mod's `mail.eyefinder.info` gets the mail API.
 
 Plugin code is split so that the harness can exercise it without the game:
 
@@ -54,13 +55,39 @@ Non-obvious behavior:
 - **On-screen keyboard:** it opens only after a pad click (`MouseDown` with `b = 1`), so mouse users never see it. 60 ms after the click, the helper sends `ef.queryField` to the tab's focused frame, the render process reads the focused element with `CefV8Context::Eval`, and the result reaches `ef.keyboardOpen` in `ui/shell.html`. Clicks on the shell go to `ef.padClicked`, since the address bar is its only field. The text lives in the shell's `#kbText` until Go: `ef.applyField` then writes it with `execCommand('insertText')`, so pages that listen for input notice, and the helper sends a real Enter unless the field is multi-line or its form has another empty field. Close, B or a click outside changes nothing. The tab keeps Chromium's focus so that the page doesn't see a blur, and the shell gets the physical keyboard. The helper composites the keyboard's rectangle over the tab, and `Header::keyboardOpen` hands the pad to it: `BrowserOverlay::UpdatePadKeyboard` sends `EventType::PadKeyboard` instead of moving the cursor, and the pager stops listening. Buttons are ignored until released whenever it opens or closes, or the A on Close would click the page underneath. Start isn't available because it must reach the game, and the triggers aren't used because GInput's controls set may route them elsewhere.
 - **Cursor recentering:** the hook at `0x007453F0` stops the game moving the cursor while the browser is open.
 - **Pause menu:** the game opens it when `CPad::NewKeyState.esc` goes down, so Escape must reach the game. While `m_bMenuActive` is set, the plugin passes all input through, stops drawing and mutes pages. On return it restarts the helper if the resolution changed.
-- **Opening and closing:** F8, or TAB at the cyber cafe position. The game fades to black, the browser appears, and the browser itself is darkened for its own fade because it's drawn after the game's fade.
+- **Opening and closing:** players use TAB or L1 at a computer from `locations.json`, and the prompt names whichever they're using. F8 is the debug key: it opens anywhere, with Shift for a police session or Ctrl for a dark web one. Plain F8 uses the computer there, or else a normal session at $10 a minute. It also closes the browser. The game fades to black, the browser appears, and the browser itself is darkened for its own fade because it's drawn after the game's fade.
 - **Focus:** navigating can replace Chromium's internal widget, which then has no focus and silently refuses to open dropdowns, so the helper reasserts focus on every click.
 - **Render state:** `OverlayRenderer::Draw` wraps everything in a state block, because RenderWare caches device state and must not see it change.
 - **Dropdowns:** Chromium paints them as a separate `PET_POPUP` element, and the helper composites it onto the frame.
 - **Device loss:** the texture is in `D3DPOOL_DEFAULT`, so `OnDeviceLost` releases it and `OnDeviceReset` requests a new frame.
 - **Resolution changes:** the helper restarts if the game's size changed, which loses the open tabs.
 - **DXVK:** the developer's game runs through DXVK, so test Direct3D changes through it as well as native Direct3D.
+
+## Folder layout and CEF
+
+CEF is too big to ship, so players download it into the `browser` folder themselves. Only `EyeFinderBrowser.exe` and CEF belong there, and everything else lives beside it:
+
+```
+modloader\EyeFinder92SA\
+  EyeFinder92SA.asi, EyeFinder92SA.ini, locations.json, save data\
+  browser\   EyeFinderBrowser.exe, INSTALL_CEF.txt, and CEF, added by the player
+  system\    ui\ and sites\: the mod's, replaced on update
+  sites\, ads\   public: anyone can add to them
+```
+
+`helper/build` has the same layout, with `Release` as its `browser`, and the helper finds everything from its own parent folder. `deploy.ps1` mirrors `browser` and `system`, so don't keep your own files in them. It also never overwrites an edited `locations.json`, and only warns.
+
+`BrowserRuntimeProblem` checks for CEF's files and the exact version before starting the helper, and the player is told to read `INSTALL_CEF.txt`. When CEF changes, update `kCefVersion` in `shared/ipc.h` and `tools\fetch-cef.ps1` together: the harness fails if the build's `libcef.dll` doesn't match. `package.ps1` fills the download link in `tools\INSTALL_CEF.txt` from `fetch-cef.ps1`, and fails if CEF files reach the package.
+
+## Sessions
+
+`locations.json` lists the computers, with `name`, `type` (`normal`, `pd` or `dark_web`), `position`, `radius`, and optional `interior` and `pricePerMinute`. `Locations.cpp` loads it, and a bad entry is skipped and logged. With no usable entries, the cyber cafe is used.
+
+- **Plugin:** `BrowserOverlay::CheckForComputers` shows the prompt, and the computer the player is at decides the session. It sends `EventType::Session` on opening and after a helper restart, and `SessionTime` every second.
+- **Payment:** only `normal` computers charge. The clock only runs while the browser is really open, not during fades or the pause menu. Every started minute is paid in full, and a player short of money pays what they have. `ChargeSession` runs only on a normal close, so a crash or a game load costs nothing. The receipt goes through `MailSystem`'s help box queue, which retries.
+- **Desktop:** `applySession` in `ui/shell.html` sets a `session-<type>` class on the body, which picks the desktop's color, and shows that session's icon. Changing the type closes every tab, because a tab from another computer must not stay open. Icons are in `ui/icons`, and the harness's click points depend on their column.
+- **Recycle bin:** a window in `ui/shell.html`, filled from `ui/recycle_bin.js`, which lists files for each session type. Their text is always inserted as text. While it's open the tab is hidden through the layout message, like the internet warning.
+- **Restricted sites:** `"session": "pd"` or `"dark_web"` in a site's `site.json` limits it to that session. `SiteHandlerFactory` checks it before anything else on every request, which covers pages, files and `/_game/`. These sites are also left out of `/_game/sites.json`. The icons only open them: the access check is in the helper, not the shell.
 
 ## Email and save data
 

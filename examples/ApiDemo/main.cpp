@@ -45,7 +45,7 @@ bool GameHasFocus() {
 }
 
 std::string DemoScriptPath() {
-	return ModuleDirectory() + "\\browser\\sites\\www.eyefinder.info\\scripts\\hello.efs";
+	return ModuleDirectory() + "\\system\\sites\\www.eyefinder.info\\scripts\\hello.efs";
 }
 
 // Runs only if the test marker file exists: starts the demo script and checks that it gave CJ money.

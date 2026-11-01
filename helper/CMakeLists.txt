@@ -25,9 +25,12 @@ target_link_libraries(${CEF_TARGET} libcef_lib libcef_dll_wrapper ${CEF_STANDARD
 COPY_FILES("${CEF_TARGET}" "${CEF_BINARY_FILES}" "${CEF_BINARY_DIR}" "${CEF_TARGET_OUT_DIR}")
 COPY_FILES("${CEF_TARGET}" "${CEF_RESOURCE_FILES}" "${CEF_RESOURCE_DIR}" "${CEF_TARGET_OUT_DIR}")
 
+# The build folder is laid out like the mod: Release is its browser folder, with only the helper
+# and CEF, and the interface and sites are beside it, so that they can ship without CEF.
 # Emptied before copying: an old file would reach modloader, which runs any .cs it finds.
 add_custom_command(TARGET ${CEF_TARGET} POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E rm -rf "${CEF_TARGET_OUT_DIR}/ui" "${CEF_TARGET_OUT_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/ads"
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${CEF_TARGET_OUT_DIR}/ui" "${CEF_TARGET_OUT_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/system" "${CMAKE_CURRENT_BINARY_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/ads"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../public" "${CMAKE_CURRENT_BINARY_DIR}"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../ui" "${CEF_TARGET_OUT_DIR}/ui"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../sites" "${CEF_TARGET_OUT_DIR}/sites")
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../ui" "${CMAKE_CURRENT_BINARY_DIR}/system/ui"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../sites" "${CMAKE_CURRENT_BINARY_DIR}/system/sites"
+  COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/../locations.json" "${CMAKE_CURRENT_BINARY_DIR}/locations.json")

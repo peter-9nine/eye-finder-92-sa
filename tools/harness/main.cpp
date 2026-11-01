@@ -19,6 +19,7 @@
 #include "BrowserClient.h"
 #include "EyeFinderApi.h"
 #include "KeyConfig.h"
+#include "Locations.h"
 #include "MailStore.h"
 #include "OverlayRenderer.h"
 #include "PagerRenderer.h"
@@ -29,8 +30,10 @@ constexpr int gWidth = 1280;
 constexpr int gHeight = 720;
 
 // Interface
-constexpr POINT kIconInternet = { 433, 320 };
-constexpr POINT kIconLogOff = { 831, 526 };
+constexpr POINT kIconInternet = { 72, 72 };
+constexpr POINT kIconSecond = { 72, 194 };  // The session's own browser, or else Mail.
+constexpr POINT kIconBin = { 72, 317 };  // In a normal session.
+constexpr POINT kIconLogOff = { 72, 439 };  // In a normal session.
 constexpr POINT kBack = { 186, 51 };
 constexpr POINT kForward = { 226, 51 };
 constexpr POINT kAddress = { 640, 51 };
@@ -94,6 +97,15 @@ void ExpectPixel(const char* what, POINT point, uint32_t expected) {
 	const uint32_t actual = gLastShot.empty() ? 0 : gLastShot[size_t(point.y) * gWidth + point.x] & 0xFFFFFF;
 	if (actual != expected) {
 		printf("FAIL: %s: pixel %06X, expected %06X\n", what, actual, expected);
+		++gFailures;
+	}
+}
+
+void ExpectIconDrawn(const char* what, POINT center) {
+	const uint32_t background = gLastShot.empty() ? 0 : gLastShot[size_t(center.y - 30) * gWidth + center.x - 36] & 0xFFFFFF;
+	const uint32_t actual = gLastShot.empty() ? 0 : gLastShot[size_t(center.y) * gWidth + center.x] & 0xFFFFFF;
+	if (actual == background) {
+		printf("FAIL: the %s icon isn't drawn\n", what);
 		++gFailures;
 	}
 }
@@ -528,6 +540,160 @@ void TestKeyboard() {
 	Run(200);
 }
 
+void TestLocations(const std::filesystem::path& modFolder) {
+	const std::filesystem::path folder = std::filesystem::path(gOutput) / L"locations";
+	std::error_code error;
+	std::filesystem::create_directories(folder, error);
+	const std::wstring path = (folder / L"locations.json").wstring();
+	const auto write = [&path](const char* text) {
+		std::ofstream file(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
+		file << text;
+	};
+
+	std::string problems;
+	const auto shipped = LoadLocations((modFolder / L"locations.json").wstring(), problems);
+	Expect("locations: the shipped file has no problems", problems.empty());
+	const auto hasType = [&shipped](ef::SessionType type) {
+		return std::any_of(shipped.begin(), shipped.end(), [type](const ComputerLocation& location) { return location.type == type; });
+	};
+	Expect("locations: the shipped file has every type", hasType(ef::SessionType::Normal) && hasType(ef::SessionType::Police) && hasType(ef::SessionType::DarkWeb));
+
+	problems.clear();
+	const auto missing = LoadLocations((folder / L"none.json").wstring(), problems);
+	Expect("locations: a missing file keeps the cyber cafe", missing.size() == 1 && missing[0].name == "Cyber cafe" && !problems.empty());
+
+	write("{ not json");
+	problems.clear();
+	Expect("locations: broken JSON keeps the cyber cafe", LoadLocations(path, problems).size() == 1 && !problems.empty());
+
+	write(R"({ "locations": [
+		{ "name": "A", "type": "normal", "position": [10, 20, 30], "radius": 2, "pricePerMinute": 7 },
+		{ "name": "B", "type": "pd", "position": [10, 20, 30], "radius": 2, "interior": 6, "pricePerMinute": 99 },
+		{ "name": "Bad type", "type": "banana", "position": [0, 0, 0] },
+		{ "name": "Bad position", "type": "normal", "position": [0, 0] },
+		{ "name": "Bad radius", "type": "normal", "position": [0, 0, 0], "radius": "big" }
+	] })");
+	problems.clear();
+	const auto list = LoadLocations(path, problems);
+	Expect("locations: bad entries are skipped and explained", list.size() == 2 && problems.find("entry 3") != std::string::npos && problems.find("entry 4") != std::string::npos && problems.find("entry 5") != std::string::npos);
+	Expect("locations: only normal computers charge", list.size() == 2 && list[0].pricePerMinute == 7 && list[1].pricePerMinute == 0);
+
+	Expect("locations: found inside the radius", list.size() == 2 && FindComputer(list, 11, 20, 30, 0) == &list[0]);
+	Expect("locations: not found outside it", FindComputer(list, 13, 20, 30, 0) == nullptr);
+	write(R"({ "locations": [ { "type": "pd", "position": [1, 1, 1], "radius": 2, "interior": 6 } ] })");
+	const auto inside = LoadLocations(path, problems);
+	Expect("locations: an interior must match", FindComputer(inside, 1, 1, 1, 6) == &inside[0] && FindComputer(inside, 1, 1, 1, 0) == nullptr);
+
+	Expect("session cost: started minutes", SessionCost(0, 10) == 10 && SessionCost(60, 10) == 10 && SessionCost(61, 10) == 20 && SessionCost(125, 10) == 30);
+
+	Expect("CEF: the build's runtime is accepted", BrowserRuntimeProblem((modFolder / L"browser").wstring()).empty() || BrowserRuntimeProblem((modFolder / L"Release").wstring()).empty());
+	Expect("CEF: a folder without it is refused", !BrowserRuntimeProblem(folder.wstring()).empty());
+
+	// All the files are there, but libcef.dll isn't the build the helper needs.
+	const std::filesystem::path wrong = folder / L"wrong cef";
+	std::filesystem::create_directories(wrong / L"locales", error);
+	for (const wchar_t* name : { L"EyeFinderBrowser.exe", L"libcef.dll", L"chrome_elf.dll", L"icudtl.dat", L"v8_context_snapshot.bin", L"resources.pak", L"chrome_100_percent.pak", L"locales\\en-US.pak" }) {
+		std::ofstream file(wrong / name, std::ios::binary);
+		file << "x";
+	}
+	Expect("CEF: another version is refused", BrowserRuntimeProblem(wrong.wstring()).rfind("Wrong CEF version", 0) == 0);
+}
+
+void TestSessions() {
+	constexpr POINT kInsideTimer = { 1270, 14 };
+	constexpr POINT kPageTop = { 640, 130 };
+	constexpr uint32_t kPoliceHeader = 0x0B2A55;
+	constexpr uint32_t kPoliceDesktop = 0x12306B;
+	constexpr uint32_t kDarkDesktop = 0x101014;
+	constexpr uint32_t kDarkPage = 0x050505;
+
+	const auto start = [](ef::SessionType type, int price) {
+		gClient.Send({ ef::EventType::Session, 0, 0, static_cast<int32_t>(type), price });
+		Run(500);
+	};
+	const auto pageColor = [] { return gLastShot[size_t(kPageTop.y) * gWidth + kPageTop.x] & 0xFFFFFF; };
+
+	// A normal session: a timer, and neither restricted site.
+	start(ef::SessionType::Normal, 10);
+	gClient.Send({ ef::EventType::SessionTime, 0, 0, 3725, 630 });
+	Run(300);
+	Shot("20a_normal_session");
+	ExpectPixel("session: the timer shows in a normal session", kInsideTimer, 0x000000);
+	GoTo("network.sapd.sa", 1000);
+	Shot("20b_police_refused");
+	Expect("session: the police site is refused from a normal computer", pageColor() != kPoliceHeader);
+	GoTo("hidden.onion", 1000);
+	Shot("20c_dark_web_refused");
+	Expect("session: the dark web is refused from a normal computer", pageColor() != kDarkPage);
+
+	// The recycle bin opens over the browser, and the tab comes back when it closes.
+	constexpr POINT kBinTitle = { 800, 133 };
+	constexpr POINT kBinClose = { 987, 133 };
+	constexpr POINT kBinFirstFile = { 400, 170 };
+	constexpr POINT kBinPreview = { 800, 300 };
+	constexpr uint32_t kBinTitleColor = 0x000080;
+	Click(kIconBin);
+	Run(300);
+	Shot("20c2_bin_empty");
+	ExpectPixel("recycle bin: it opens over the browser", kBinTitle, kBinTitleColor);
+	Click(kBinClose);
+	Run(300);
+	Shot("20c3_bin_closed");
+	Expect("recycle bin: it closes", (gLastShot[size_t(kBinTitle.y) * gWidth + kBinTitle.x] & 0xFFFFFF) != kBinTitleColor);
+
+	// A police computer: its own desktop and browser, and no timer. Tabs don't come along.
+	start(ef::SessionType::Police, 0);
+	Shot("20d_police_desktop");
+	ExpectPixel("session: the police desktop has no timer", kInsideTimer, kPoliceDesktop);
+	ExpectIconDrawn("police", { 72, 179 });
+
+	// A police computer's recycle bin has files, and they can be read.
+	Click({ 72, 439 });
+	Run(300);
+	Shot("20d2_police_bin");
+	Click(kBinFirstFile);
+	Run(300);
+	Shot("20d3_police_bin_file");
+	{
+		// The first file's row turns dark, and the preview gains text somewhere.
+		const uint32_t row = gLastShot[size_t(kBinFirstFile.y) * gWidth + 570] & 0xFFFFFF;
+		Expect("recycle bin: a file can be selected", row == kBinTitleColor);
+		bool hasText = false;
+		for (int x = kBinPreview.x - 200; x < kBinPreview.x + 150 && !hasText; ++x) {
+			for (int y = 165; y < 250 && !hasText; ++y) hasText = (gLastShot[size_t(y) * gWidth + x] & 0xFFFFFF) != 0xFFFFFF;
+		}
+		Expect("recycle bin: a file shows its text", hasText);
+	}
+	Click(kBinClose);
+	Run(300);
+	Click(kIconSecond);
+	Run(1200);
+	Shot("20e_police_site");
+	ExpectPixel("session: the police icon opens its site", kPageTop, kPoliceHeader);
+	GoTo("hidden.onion", 1000);
+	Shot("20f_dark_web_refused_from_police");
+	Expect("session: the dark web is refused from a police computer", pageColor() != kDarkPage);
+
+	start(ef::SessionType::DarkWeb, 0);
+	Shot("20g_dark_web_desktop");
+	ExpectPixel("session: the dark web desktop has no timer", kInsideTimer, kDarkDesktop);
+	ExpectIconDrawn("dark web", { 72, 179 });
+	Click(kIconSecond);
+	Run(1200);
+	Shot("20h_dark_web_site");
+	ExpectPixel("session: the dark web icon opens its site", kPageTop, kDarkPage);
+
+	// Back on a normal computer, what was reachable before no longer is.
+	start(ef::SessionType::Normal, 0);
+	Shot("20i_back_to_normal");
+	ExpectPixel("session: a free computer has no timer", kInsideTimer, kDesktopColor);
+	Click(kIconInternet);
+	Run(1000);
+	GoTo("hidden.onion", 1000);
+	Shot("20j_dark_web_refused_again");
+	Expect("session: leaving a computer takes its access away", pageColor() != kDarkPage);
+}
+
 void Measure(const char* name, int milliseconds, bool scroll) {
 	gStats = {};
 	const uint32_t paints = gClient.PaintCount();
@@ -631,6 +797,11 @@ int wmain(int argc, wchar_t** argv) {
 	Run(800);
 	Shot("01_desktop");
 	ExpectPixel("desktop", { 1200, 400 }, kDesktopColor);
+	// A missing image leaves the desktop's color in its place, and nothing else would notice.
+	ExpectIconDrawn("Internet", { 72, 57 });
+	ExpectIconDrawn("Mail", { 72, 179 });
+	ExpectIconDrawn("Recycle Bin", { 72, 301 });
+	ExpectIconDrawn("Log Off", { 72, 423 });
 
 	// Desktop -> browser with its home page.
 	Click(kIconInternet);
@@ -827,7 +998,7 @@ int wmain(int argc, wchar_t** argv) {
 
 	// What the FAQ promises: a new file in an existing site loads without restarting, and F5 picks up changes.
 	{
-		const std::filesystem::path page = std::filesystem::path(helper).parent_path() / L"sites" / L"www.eyefinder.info" / L"f5test.html";
+		const std::filesystem::path page = std::filesystem::path(helper).parent_path().parent_path() / L"system" / L"sites" / L"www.eyefinder.info" / L"f5test.html";
 		const auto writePage = [&page](const char* color) {
 			std::ofstream file(page, std::ios::binary | std::ios::trunc);
 			file << "<body style='margin:0;background:" << color << "'></body>";
@@ -919,6 +1090,8 @@ int wmain(int argc, wchar_t** argv) {
 		++gFailures;
 	}
 
+	TestSessions();
+
 	// Log Off must ask to return to the game.
 	if (gClient.TakeCloseRequest()) {
 		puts("FAIL: close was requested too early");
@@ -935,6 +1108,7 @@ int wmain(int argc, wchar_t** argv) {
 
 	TestMailFiles();
 	TestApi();
+	TestLocations(std::filesystem::path(helper).parent_path().parent_path());
 
 	const DWORD stopStart = GetTickCount();
 	gClient.Stop();

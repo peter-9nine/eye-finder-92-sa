@@ -38,6 +38,10 @@ void MailSystem::Initialize(BrowserOverlay& overlay, const PadInput& pad) {
 	std::string problems;
 	keys_ = LoadKeyConfig(PluginDirectory() + L"\\EyeFinder92SA.ini", problems);
 	if (!problems.empty()) Log(problems);
+	problems.clear();
+	overlay.SetLocations(LoadLocations(PluginDirectory() + L"\\locations.json", problems));
+	if (!problems.empty()) Log(problems);
+
 	overlay.SetToggleKey(keys_.browser);
 	overlay.SetKeyFilter([this](unsigned int key, bool repeat) { return HandleKey(key, repeat); });
 
@@ -220,7 +224,7 @@ void MailSystem::HandleBrowserOperations() {
 		if (slash == std::string::npos) continue;
 
 		const std::filesystem::path relative = std::filesystem::path(siteScript.substr(0, slash)) / L"scripts" / (siteScript.substr(slash + 1) + ".efs");
-		const std::filesystem::path systemFile = std::filesystem::path(PluginDirectory()) / L"browser" / L"sites" / relative;
+		const std::filesystem::path systemFile = std::filesystem::path(PluginDirectory()) / L"system" / L"sites" / relative;
 		const std::filesystem::path publicFile = std::filesystem::path(PluginDirectory()) / L"sites" / relative;
 
 		std::error_code error;
@@ -409,6 +413,10 @@ void MailSystem::Update() {
 
 	HandleApiRequests();
 	HandleBrowserOperations();
+
+	std::string receipt;
+	if (overlay_->TakeSessionReceipt(receipt)) texts_.push_back(std::move(receipt));
+
 	ShowNextText();
 	UpdatePad();
 	ShowNextPage();

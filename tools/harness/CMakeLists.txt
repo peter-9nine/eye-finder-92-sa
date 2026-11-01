@@ -13,7 +13,8 @@ add_executable(EyeFinderHarness
   "${ROOT}/source/OverlayRenderer.cpp"
   "${ROOT}/source/PagerRenderer.cpp"
   "${ROOT}/source/MailStore.cpp"
-  "${ROOT}/source/KeyConfig.cpp")
+  "${ROOT}/source/KeyConfig.cpp"
+  "${ROOT}/source/Locations.cpp")
 
 set(NLOHMANN "$ENV{PLUGIN_SDK_DIR}/tools/myplugin-gen/generated/shared")
 target_include_directories(EyeFinderHarness PRIVATE "${ROOT}/include" "${ROOT}/shared" "${ROOT}/api" "${NLOHMANN}")

@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 #include "BrowserClient.h"
+#include "Locations.h"
 #include "OverlayRenderer.h"
 #include "PadInput.h"
 
@@ -13,6 +14,7 @@ public:
 	void InstallWindowHook();
 
 	void SetPad(const PadInput& pad) { pad_ = &pad; }
+	void SetLocations(std::vector<ComputerLocation> locations) { locations_ = std::move(locations); }
 	void SetToggleKey(unsigned int key) { toggleKey_ = key; }
 	// Takes (key, is a repeat) and returns true if the key must not reach anything else.
 	void SetKeyFilter(std::function<bool(unsigned int, bool)> filter) { keyFilter_ = std::move(filter); }
@@ -29,6 +31,8 @@ public:
 	bool UsesCursor() const;
 	bool IsOpen() const { return phase_ != Phase::Closed; }
 	bool KeyboardOpen() const { return client_.KeyboardOpen(); }
+	// The text about what the last session cost, once.
+	bool TakeSessionReceipt(std::string& text);
 
 	void SetUnreadMail(int unread);
 	bool TakeMailOp(ef::MailOp& operation) { return client_.TakeMailOp(operation); }
@@ -42,13 +46,17 @@ private:
 
 	static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
 
-	void BeginOpening();
+	void BeginOpening(const ComputerLocation& computer);
+	void OpenFromDebugKey();
 	void FinishOpening();
 	void BeginClosing();
 	void FinishClosing();
 	void ReleaseGame();
 	void SyncPauseMenu();
-	void CheckForCyberCafe();
+	void CheckForComputers();
+	void SendSession();
+	void UpdateSessionClock();
+	void ChargeSession();
 	bool EnsureHelper();
 	void UpdateMouse();
 	void UpdatePad();
@@ -79,6 +87,19 @@ private:
 	bool haveMouse_ = false;
 	uint32_t buttons_ = 0;
 	int unreadMail_ = 0;
+
+	std::vector<ComputerLocation> locations_;
+	const ComputerLocation* nearbyComputer_ = nullptr;
+	std::string lastPrompt_;
+	bool debugKeyPressed_ = false;
+	uint32_t debugKeyModifiers_ = 0;
+	std::string startProblem_;
+	ef::SessionType sessionType_ = ef::SessionType::Normal;
+	int sessionPrice_ = 0;
+	DWORD sessionMs_ = 0;
+	DWORD sessionLastTick_ = 0;
+	int sessionSecondsSent_ = -1;
+	std::string sessionReceipt_;
 
 	const PadInput* pad_ = nullptr;
 	uint32_t padIgnored_ = 0;  // Buttons already held on arrival: they don't count until released.

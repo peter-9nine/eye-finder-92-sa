@@ -1,0 +1,18 @@
+EyeFinder92SA needs CEF, the browser engine, which isn't included with the mod.
+
+1. Download this exact version. Any other version won't work:
+   {{URL}}
+
+2. Open the file with 7-Zip. You'll find a folder called {{NAME}}
+
+3. Copy everything inside its Release folder into this folder.
+
+4. Copy everything inside its Resources folder into this folder too.
+
+When you're done, this folder should have libcef.dll and a folder called locales,
+right next to EyeFinderBrowser.exe.
+
+The game doesn't need restarting if it's already running. If something is wrong,
+EyeFinder92SA.log, in the folder above this one, says what's missing.
+
+When you update the mod, you only need to do this again if its notes say the CEF version changed.

@@ -50,6 +50,13 @@ constexpr char kHomeUrl[] = "https://www.eyefinder.info/";
 std::atomic<bool> gInternetEnabled{ false };
 std::set<std::string> gLocalDomains;  // Only written at startup, before any browser exists.
 
+// The kind of computer being used. Some sites can only be reached from one kind, and they're
+// served on another thread, so it's atomic. The rest is only for the interface's timer.
+std::atomic<int32_t> gSessionType{ static_cast<int32_t>(ef::SessionType::Normal) };
+int gSessionPrice = 0;
+int gSessionSeconds = 0;
+int gSessionCost = 0;
+
 bool IsAllowedUrl(const std::string& url) {
 	if (gInternetEnabled.load(std::memory_order_relaxed)) return true;
 
@@ -108,6 +115,7 @@ void SetKeyboardTarget(View* view);
 void PublishCursor();
 void CallShell(const std::string& function, CefRefPtr<CefValue> argument);
 void AskForInternet(const std::string& url, bool newTab);
+void SendSessionToShell();
 
 CefRefPtr<CefValue> StringValue(const std::string& text) {
 	CefRefPtr<CefValue> value = CefValue::Create();
@@ -185,12 +193,15 @@ fs::path ExecutableDirectory() {
 	return fs::path(buffer).parent_path();
 }
 
-// Two places for sites: browser\\sites belongs to the mod and is replaced when it updates. The sites
+// The helper and CEF are in browser. Nothing else is, so that players can add CEF by themselves.
+// Two places for sites: system\sites belongs to the mod and is replaced when it updates. The sites
 // folder next to the .asi is public: anyone can add to it, and nothing else touches it.
-fs::path SystemSitesFolder() { return ExecutableDirectory() / L"sites"; }
-fs::path PublicSitesFolder() { return ExecutableDirectory().parent_path() / L"sites"; }
-fs::path SystemAdsFolder() { return ExecutableDirectory() / L"ads"; }
-fs::path PublicAdsFolder() { return ExecutableDirectory().parent_path() / L"ads"; }
+fs::path ModDirectory() { return ExecutableDirectory().parent_path(); }
+fs::path SystemDirectory() { return ModDirectory() / L"system"; }
+fs::path SystemSitesFolder() { return SystemDirectory() / L"sites"; }
+fs::path PublicSitesFolder() { return ModDirectory() / L"sites"; }
+fs::path SystemAdsFolder() { return SystemDirectory() / L"ads"; }
+fs::path PublicAdsFolder() { return ModDirectory() / L"ads"; }
 
 std::string ReadTextFile(const fs::path& path) {
 	std::ifstream file(path, std::ios::binary);
@@ -209,6 +220,14 @@ CefRefPtr<CefDictionaryValue> ReadJsonObject(const fs::path& path) {
 
 std::string StringField(CefRefPtr<CefDictionaryValue> object, const char* name) {
 	return object && object->HasKey(name) && object->GetType(name) == VTYPE_STRING ? object->GetString(name).ToString() : std::string();
+}
+
+// The session a site needs, from "session" in its site.json, or -1 if any computer can reach it.
+int RequiredSession(CefRefPtr<CefDictionaryValue> details) {
+	const std::string session = StringField(details, "session");
+	if (session == "pd") return static_cast<int>(ef::SessionType::Police);
+	if (session == "dark_web") return static_cast<int>(ef::SessionType::DarkWeb);
+	return -1;
 }
 
 std::string ListAsJson(const char* name, CefRefPtr<CefListValue> list) {
@@ -288,6 +307,7 @@ std::string BuildSitesJson() {
 
 		CefRefPtr<CefDictionaryValue> details = ReadJsonObject(entry.path() / L"site.json");
 		if (details && details->HasKey("listed") && details->GetType("listed") == VTYPE_BOOL && !details->GetBool("listed")) continue;
+		if (RequiredSession(details) >= 0) continue;  // The public list must not reveal these.
 
 		const std::string title = StringField(details, "title");
 		CefRefPtr<CefDictionaryValue> site = CefDictionaryValue::Create();
@@ -368,7 +388,7 @@ CefRefPtr<CefResourceHandler> ServeAdImage(const std::string& path) {
 // served from disk, and the custom header stops another origin from making the request.
 CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs::path& root, const std::string& path, CefRefPtr<CefRequest> request) {
 	// Public information: the site list and ads are read on every request.
-	if (path == "/_game/sa.js") return ServeFile(ExecutableDirectory() / L"ui" / L"sa.js", "text/javascript");
+	if (path == "/_game/sa.js") return ServeFile(SystemDirectory() / L"ui" / L"sa.js", "text/javascript");
 	if (path == "/_game/sites.json") return JsonResponse(200, BuildSitesJson());
 	if (path == "/_game/ads.json") return JsonResponse(200, BuildAdsJson());
 	if (path.rfind("/_game/ad/", 0) == 0) return ServeAdImage(path.substr(10));
@@ -422,9 +442,12 @@ CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs:
 
 class SiteHandlerFactory : public CefSchemeHandlerFactory {
 public:
-	SiteHandlerFactory(fs::path root, bool isMailSite) : root_(std::move(root)), isMailSite_(isMailSite) {}
+	SiteHandlerFactory(fs::path root, bool isMailSite, int requiredSession) : root_(std::move(root)), isMailSite_(isMailSite), requiredSession_(requiredSession) {}
 
 	CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString&, CefRefPtr<CefRequest> request) override {
+		// Checked first and for every request, so that links, scripts and the game API are all covered.
+		if (requiredSession_ >= 0 && gSessionType.load(std::memory_order_relaxed) != requiredSession_) return Forbidden();
+
 		CefURLParts parts;
 		if (!CefParseURL(request->GetURL(), parts)) return nullptr;
 
@@ -461,8 +484,15 @@ private:
 		return new CefStreamResourceHandler(404, "Not Found", "text/html", CefResponse::HeaderMap(), stream);
 	}
 
+	static CefRefPtr<CefResourceHandler> Forbidden() {
+		static const char kPage[] = "<body style='font:18px Tahoma,sans-serif;margin:40px'><h2>Connection refused</h2><p>This network can't be reached from this computer.</p></body>";
+		CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForData(const_cast<char*>(kPage), sizeof(kPage) - 1);
+		return new CefStreamResourceHandler(403, "Forbidden", "text/html", CefResponse::HeaderMap(), stream);
+	}
+
 	fs::path root_;
 	const bool isMailSite_;
+	const int requiredSession_;
 
 	IMPLEMENT_REFCOUNTING(SiteHandlerFactory);
 };
@@ -711,6 +741,7 @@ public:
 			CefRefPtr<CefValue> value = CefValue::Create();
 			value->SetInt(gUnreadMail);
 			CallShell("onMail", value);
+			SendSessionToShell();
 		}
 	}
 
@@ -802,6 +833,18 @@ void CallShell(const std::string& function, CefRefPtr<CefValue> argument) {
 	if (!gShell || !gShell->Browser()) return;
 	const std::string json = CefWriteJSON(argument, JSON_WRITER_DEFAULT).ToString();
 	gShell->Browser()->GetMainFrame()->ExecuteJavaScript("ef." + function + "(" + json + ")", gShellUrl, 0);
+}
+
+void SendSessionToShell() {
+	const int type = gSessionType.load(std::memory_order_relaxed);
+	CefRefPtr<CefDictionaryValue> details = CefDictionaryValue::Create();
+	details->SetString("type", type == static_cast<int>(ef::SessionType::Police) ? "pd" : type == static_cast<int>(ef::SessionType::DarkWeb) ? "dark_web" : "normal");
+	details->SetInt("price", gSessionPrice);
+	details->SetInt("seconds", gSessionSeconds);
+	details->SetInt("cost", gSessionCost);
+	CefRefPtr<CefValue> value = CefValue::Create();
+	value->SetDictionary(details);
+	CallShell("onSession", value);
 }
 
 // The second barrier, at network level: in local mode, everything goes through a proxy that doesn't exist.
@@ -1298,7 +1341,8 @@ private:
 			gLocalDomains.insert(lowered);
 
 			// Mail belongs only to the mod's site: a public one with that name gets no access.
-			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), isSystem && lowered == kMailDomain);
+			const int requiredSession = RequiredSession(ReadJsonObject(entry.path() / L"site.json"));
+			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), isSystem && lowered == kMailDomain, requiredSession);
 			CefRegisterSchemeHandlerFactory("https", lowered, factory);
 			CefRegisterSchemeHandlerFactory("http", lowered, factory);
 		}
@@ -1513,6 +1557,20 @@ void HandleEvent(const ef::Event& event) {
 		if (event.a >= 0 && event.a < static_cast<int>(std::size(kActions))) CallShell("padKeyboard", StringValue(kActions[event.a]));
 		break;
 	}
+
+	case ef::EventType::Session:
+		gSessionType.store(event.a, std::memory_order_relaxed);
+		gSessionPrice = event.b;
+		gSessionSeconds = 0;
+		gSessionCost = 0;
+		SendSessionToShell();
+		break;
+
+	case ef::EventType::SessionTime:
+		gSessionSeconds = event.a;
+		gSessionCost = event.b;
+		SendSessionToShell();
+		break;
 
 	case ef::EventType::Quit:
 		break;

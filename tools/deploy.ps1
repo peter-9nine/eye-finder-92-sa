@@ -13,9 +13,17 @@ New-Item -ItemType Directory -Force -Path $browser | Out-Null
 
 Copy-Item "$root\bin\GTASA\$Configuration\EyeFinder92SA.asi" $target -Force
 
-# /MIR leaves the folder identical to the build. Robocopy returns less than 8 if all went well.
+# /MIR leaves each folder identical to the build, so don't keep your own files in browser or system.
+# Robocopy returns less than 8 if all went well.
 robocopy "$root\helper\build\Release" $browser /MIR /NFL /NDL /NJH /NJS /NP /XF '*.pdb' '*.lib' '*.exp' '*.ilk' | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+robocopy "$root\helper\build\system" (Join-Path $target 'system') /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+
+# The locations are meant to be edited where they're installed, so an edited file is never overwritten.
+$locations = Join-Path $target 'locations.json'
+if (-not (Test-Path $locations)) { Copy-Item "$root\locations.json" $locations }
+elseif ((Get-FileHash $locations).Hash -ne (Get-FileHash "$root\locations.json").Hash) { Write-Warning "$locations differs from the project's, and was kept" }
 
 # The public example content is added without deleting anything, because those folders belong to whoever uses them.
 robocopy "$root\public" $target /E /NFL /NDL /NJH /NJS /NP | Out-Null

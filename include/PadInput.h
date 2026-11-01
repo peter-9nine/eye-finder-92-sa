@@ -30,6 +30,9 @@ public:
 	// Once per frame, before anything that uses it.
 	void Update();
 
+	// Whether the player is using the pad right now, rather than the keyboard and mouse.
+	bool InHands() const { return inHands_; }
+
 	uint32_t Held() const { return held_; }
 	bool Held(PadButton button) const { return (held_ & button) != 0; }
 	bool Pressed(PadButton button) const { return (held_ & button) && !(previous_ & button); }
@@ -43,6 +46,7 @@ public:
 
 private:
 	IGInputPad* ginput_ = nullptr;
+	bool inHands_ = false;
 
 	uint32_t held_ = 0;
 	uint32_t previous_ = 0;

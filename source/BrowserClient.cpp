@@ -2,6 +2,9 @@
 
 #include <cstring>
 #include <new>
+#include <vector>
+
+#pragma comment(lib, "version.lib")
 
 namespace {
 
@@ -9,7 +12,49 @@ std::string LastError(const char* what) {
 	return std::string(what) + " failed, Windows error " + std::to_string(GetLastError());
 }
 
+std::string FileVersionText(const std::wstring& path) {
+	const DWORD size = GetFileVersionInfoSizeW(path.c_str(), nullptr);
+	std::vector<char> data(size);
+	if (size == 0 || !GetFileVersionInfoW(path.c_str(), 0, size, data.data())) return {};
+
+	struct Translation { WORD language; WORD codePage; };
+	Translation* translation = nullptr;
+	UINT length = 0;
+	if (!VerQueryValueW(data.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translation), &length) || length < sizeof(Translation)) return {};
+
+	wchar_t query[64];
+	swprintf_s(query, L"\\StringFileInfo\\%04x%04x\\FileVersion", translation->language, translation->codePage);
+	wchar_t* version = nullptr;
+	if (!VerQueryValueW(data.data(), query, reinterpret_cast<void**>(&version), &length) || length == 0) return {};
+
+	const int bytes = WideCharToMultiByte(CP_UTF8, 0, version, -1, nullptr, 0, nullptr, nullptr);
+	std::string text(bytes > 0 ? bytes - 1 : 0, '\0');
+	if (bytes > 1) WideCharToMultiByte(CP_UTF8, 0, version, -1, text.data(), bytes, nullptr, nullptr);
+	return text;
+}
+
 }  // namespace
+
+std::string BrowserRuntimeProblem(const std::wstring& folder) {
+	if (GetFileAttributesW((folder + L"\\EyeFinderBrowser.exe").c_str()) == INVALID_FILE_ATTRIBUTES) return "EyeFinderBrowser.exe is missing from the browser folder";
+
+	static const wchar_t* const kRequired[] = {
+		L"libcef.dll", L"chrome_elf.dll", L"icudtl.dat", L"v8_context_snapshot.bin",
+		L"resources.pak", L"chrome_100_percent.pak", L"locales\\en-US.pak",
+	};
+	for (const wchar_t* name : kRequired) {
+		if (GetFileAttributesW((folder + L"\\" + name).c_str()) != INVALID_FILE_ATTRIBUTES) continue;
+
+		char narrow[64]{};
+		WideCharToMultiByte(CP_UTF8, 0, name, -1, narrow, sizeof(narrow) - 1, nullptr, nullptr);
+		return std::string("CEF isn't installed: ") + narrow + " is missing from the browser folder. See INSTALL_CEF.txt there";
+	}
+
+	// The helper only runs with the exact build it was compiled against.
+	const std::string version = FileVersionText(folder + L"\\libcef.dll");
+	if (version != ef::kCefVersion) return "Wrong CEF version: found " + version + ", need " + ef::kCefVersion + ". See INSTALL_CEF.txt in the browser folder";
+	return {};
+}
 
 bool BrowserClient::Start(const std::wstring& helperPath, const std::wstring& url, const std::wstring& mailPath, uint32_t width, uint32_t height, std::string& error) {
 	Stop();

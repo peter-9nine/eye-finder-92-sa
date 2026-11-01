@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SAPD Network</title>
+<style>
+  body { margin: 0; font: 16px Tahoma, sans-serif; background: #eef1f6; color: #12203a; }
+  header { padding: 22px 28px; background: #0b2a55; color: #fff; }
+  header h1 { margin: 0; font: bold 28px Georgia, serif; }
+  header p { margin: 4px 0 0; color: #ffd23c; }
+  main { padding: 24px 28px; }
+  section { padding: 14px 18px; margin-bottom: 14px; background: #fff; border: 1px solid #b4c0d4; }
+  h2 { margin: 0 0 8px; font-size: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>San Andreas Police Department</h1>
+  <p>Internal network. Authorized personnel only.</p>
+</header>
+<main>
+  <section>
+    <h2>Dispatch notice</h2>
+    <p id="status">Checking the wanted register...</p>
+  </section>
+  <section>
+    <h2>Reminder</h2>
+    <p>All access to this terminal is logged. Do not leave it unattended.</p>
+  </section>
+</main>
+<script src="/_game/sa.js"></script>
+<script>
+  sa.state().then((state) => {
+    document.getElementById('status').textContent = state.wantedLevel > 0
+      ? 'Carl Johnson is currently wanted, with ' + state.wantedLevel + ' star(s). Last seen in ' + state.zone + '.'
+      : 'There are no active warrants for the current terminal user.';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "locations": [
+    {
+      "name": "Cyber cafe",
+      "type": "normal",
+      "position": [1170.4697, -1655.1893, 1014.3158],
+      "radius": 3.0,
+      "pricePerMinute": 10
+    },
+    {
+      "name": "Los Santos Police Department",
+      "type": "pd",
+      "position": [246.78, 63.9, 1003.64],
+      "radius": 5.0,
+      "interior": 6
+    },
+    {
+      "name": "San Fierro Police Department",
+      "type": "pd",
+      "position": [246.4, 110.84, 1003.22],
+      "radius": 5.0,
+      "interior": 10
+    },
+    {
+      "name": "Las Venturas Police Department",
+      "type": "pd",
+      "position": [288.75, 165.0, 1002.04],
+      "radius": 5.0,
+      "interior": 3
+    },
+    {
+      "name": "Zero's RC shop",
+      "type": "dark_web",
+      "position": [-2240.47, 137.06, 1035.41],
+      "radius": 5.0,
+      "interior": 6
+    }
+  ]
+}

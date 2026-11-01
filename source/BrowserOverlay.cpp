@@ -12,10 +12,6 @@ constexpr DWORD kGameFadeMs = 1100;
 constexpr DWORD kBrowserFadeInMs = 400;
 constexpr DWORD kBrowserFadeOutMs = 350;
 
-// The cyber cafe's computer.
-const CVector kCyberCafePosition = { 1170.4697f, -1655.1893f, 1014.3158f };
-constexpr float kCyberCafeRadius = 3.0f;
-
 constexpr float kPadCursorScreensPerSecond = 1.2f;  // Screen heights, with the stick all the way over.
 constexpr float kPadWheelPerSecond = 2400.0f;       // One wheel notch is 120.
 constexpr DWORD kPadRepeatDelayMs = 400;
@@ -31,6 +27,20 @@ uint32_t KeyboardModifiers() {
 
 bool PauseMenuActive() {
 	return FrontEndMenuManager.m_bMenuActive;
+}
+
+std::string ComputerPrompt(const ComputerLocation& computer, bool padInHands) {
+	const std::string press = std::string("Press ~h~") + (padInHands ? "L1" : "TAB") + "~s~ to ";
+	switch (computer.type) {
+	case ef::SessionType::Police:
+		return press + "log in to the police network.";
+	case ef::SessionType::DarkWeb:
+		return press + "use this computer.";
+	default:
+		break;
+	}
+	if (computer.pricePerMinute <= 0) return press + "use the internet.";
+	return press + "use the internet. $" + std::to_string(computer.pricePerMinute) + " per minute.";
 }
 
 // What Windows would send for that key. Chromium gets the physical code from here.
@@ -75,7 +85,11 @@ LRESULT CALLBACK BrowserOverlay::WindowProc(HWND window, UINT message, WPARAM wP
 		}
 
 		if (message == WM_KEYDOWN && wParam == self.toggleKey_) {
-			if (!(lParam & (1 << 30))) self.togglePending_ = true;
+			if (!(lParam & (1 << 30))) {
+				self.togglePending_ = true;
+				self.debugKeyPressed_ = true;
+				self.debugKeyModifiers_ = KeyboardModifiers();
+			}
 			if (self.phase_ != Phase::Closed) return 0;
 		}
 
@@ -126,25 +140,99 @@ bool BrowserOverlay::EnsureHelper() {
 
 	renderer_.Release();
 
+	const std::wstring folder = PluginDirectory() + L"\\browser";
+	const std::string problem = BrowserRuntimeProblem(folder);
+	if (!problem.empty()) {
+		Log("Can't start the browser: " + problem);
+		startProblem_ = "EyeFinder needs CEF. Read INSTALL_CEF.txt in its browser folder.";
+		return false;
+	}
+
 	std::string error;
-	const std::wstring helper = PluginDirectory() + L"\\browser\\EyeFinderBrowser.exe";
-	const std::wstring url = FileUrl(PluginDirectory() + L"\\browser\\ui\\shell.html");
-	if (!client_.Start(helper, url, SessionSavePath(), width, height, error)) {
+	const std::wstring url = FileUrl(PluginDirectory() + L"\\system\\ui\\shell.html");
+	if (!client_.Start(folder + L"\\EyeFinderBrowser.exe", url, SessionSavePath(), width, height, error)) {
 		Log("Could not start the browser helper: " + error);
+		startProblem_ = "EyeFinder: the browser could not start. See EyeFinder92SA.log.";
 		return false;
 	}
 
 	Log("Browser helper started at " + std::to_string(width) + "x" + std::to_string(height));
 	client_.Send({ ef::EventType::MailChanged, 0, 0, unreadMail_ });
+	// A new helper, after a resolution change, must keep the session it replaces.
+	SendSession();
 	return true;
 }
 
-void BrowserOverlay::BeginOpening() {
-	// Start the helper now: the fade gives it time to get the page ready.
-	if (!EnsureHelper()) {
-		CHud::SetHelpMessage("EyeFinder: the browser could not start. See EyeFinder92SA.log.", true, false, false);
+void BrowserOverlay::SendSession() {
+	const int seconds = static_cast<int>(sessionMs_ / 1000);
+	client_.Send({ ef::EventType::Session, 0, 0, static_cast<int32_t>(sessionType_), sessionPrice_ });
+	client_.Send({ ef::EventType::SessionTime, 0, 0, seconds, sessionPrice_ > 0 ? SessionCost(seconds, sessionPrice_) : 0 });
+	sessionSecondsSent_ = seconds;
+}
+
+// Only counts while the browser is really open: not during the fades or the pause menu.
+void BrowserOverlay::UpdateSessionClock() {
+	const DWORD now = GetTickCount();
+	sessionMs_ += (std::min<DWORD>)(now - sessionLastTick_, 1000);
+	sessionLastTick_ = now;
+
+	const int seconds = static_cast<int>(sessionMs_ / 1000);
+	if (seconds == sessionSecondsSent_ || sessionPrice_ <= 0) return;
+	sessionSecondsSent_ = seconds;
+	client_.Send({ ef::EventType::SessionTime, 0, 0, seconds, SessionCost(seconds, sessionPrice_) });
+}
+
+void BrowserOverlay::ChargeSession() {
+	if (sessionPrice_ <= 0) return;
+
+	const int seconds = static_cast<int>(sessionMs_ / 1000);
+	const int cost = SessionCost(seconds, sessionPrice_);
+	int& money = CWorld::Players[0].m_nMoney;
+	// A player short of money pays what they have, instead of going into debt.
+	const int paid = (std::min)(cost, (std::max)(money, 0));
+	money -= paid;
+
+	char text[128];
+	snprintf(text, sizeof(text), "Internet session: %d:%02d. You paid $%d%s", seconds / 60, seconds % 60, paid, paid < cost ? ", all you had." : ".");
+	sessionReceipt_ = text;
+	Log(text);
+}
+
+bool BrowserOverlay::TakeSessionReceipt(std::string& text) {
+	if (sessionReceipt_.empty()) return false;
+	text = std::move(sessionReceipt_);
+	sessionReceipt_.clear();
+	return true;
+}
+
+// For testing: opens anywhere. Shift and Ctrl pick the police and dark web sessions, even at
+// another kind of computer. Otherwise it's the computer here, or a normal paid session.
+void BrowserOverlay::OpenFromDebugKey() {
+	ComputerLocation debug;
+	debug.name = "Debug";
+	if (debugKeyModifiers_ & ef::kModShift) debug.type = ef::SessionType::Police;
+	else if (debugKeyModifiers_ & ef::kModControl) debug.type = ef::SessionType::DarkWeb;
+	else if (nearbyComputer_) {
+		BeginOpening(*nearbyComputer_);
 		return;
 	}
+	else debug.pricePerMinute = 10;
+
+	Log("Opening a debug session");
+	BeginOpening(debug);
+}
+
+void BrowserOverlay::BeginOpening(const ComputerLocation& computer) {
+	sessionType_ = computer.type;
+	sessionPrice_ = sessionType_ == ef::SessionType::Normal ? computer.pricePerMinute : 0;
+	sessionMs_ = 0;
+
+	// Start the helper now: the fade gives it time to get the page ready.
+	if (!EnsureHelper()) {
+		CHud::SetHelpMessage(startProblem_.c_str(), true, false, false);
+		return;
+	}
+	SendSession();
 
 	CPad* pad = CPad::GetPad(0);
 	savedControls_ = pad->DisablePlayerControls;
@@ -170,6 +258,7 @@ void BrowserOverlay::FinishOpening() {
 	padIgnored_ = pad_->Held();
 	phase_ = Phase::Open;
 	phaseStart_ = GetTickCount();
+	sessionLastTick_ = phaseStart_;
 	client_.Send({ ef::EventType::Show });
 
 	statsStart_ = GetTickCount();
@@ -185,6 +274,7 @@ void BrowserOverlay::BeginClosing() {
 
 void BrowserOverlay::FinishClosing() {
 	client_.Send({ ef::EventType::Hide });
+	ChargeSession();
 	ReleaseGame();
 
 	TheCamera.SetFadeColour(0, 0, 0);
@@ -225,7 +315,7 @@ void BrowserOverlay::SyncPauseMenu() {
 	// The resolution may have changed in the menu.
 	if (!EnsureHelper()) {
 		ReleaseGame();
-		CHud::SetHelpMessage("EyeFinder: the browser could not start. See EyeFinder92SA.log.", true, false, false);
+		CHud::SetHelpMessage(startProblem_.c_str(), true, false, false);
 		return;
 	}
 
@@ -236,17 +326,24 @@ void BrowserOverlay::SyncPauseMenu() {
 	client_.Send({ ef::EventType::Show });
 }
 
-void BrowserOverlay::CheckForCyberCafe() {
+void BrowserOverlay::CheckForComputers() {
+	nearbyComputer_ = nullptr;
+
 	CPed* player = FindPlayerPed(-1);
 	if (!player) return;
 
 	const CVector position = player->GetPosition();
-	const float dx = position.x - kCyberCafePosition.x;
-	const float dy = position.y - kCyberCafePosition.y;
-	const float dz = position.z - kCyberCafePosition.z;
-	if (dx * dx + dy * dy + dz * dz >= kCyberCafeRadius * kCyberCafeRadius) return;
+	nearbyComputer_ = FindComputer(locations_, position.x, position.y, position.z, player->m_nAreaCode);
+	if (!nearbyComputer_) return;
 
-	if (!CHud::HelpMessageDisplayed()) CHud::SetHelpMessage("Press ~h~TAB~s~ To Open Browser", true, false, false);
+	// Set again if the player changes between the pad and the keyboard, to name the right button.
+	const std::string prompt = ComputerPrompt(*nearbyComputer_, pad_->InHands());
+	if (!CHud::HelpMessageDisplayed() || prompt != lastPrompt_) {
+		CHud::SetHelpMessage(prompt.c_str(), true, false, false);
+		lastPrompt_ = prompt;
+	}
+
+	if (pad_->Pressed(kPadLeftShoulder)) togglePending_ = true;
 
 	CPad* pad = CPad::GetPad(0);
 	if (pad->NewKeyState.tab && !pad->OldKeyState.tab) togglePending_ = true;
@@ -256,17 +353,21 @@ void BrowserOverlay::Update() {
 	SyncPauseMenu();
 	if (PauseMenuActive()) {
 		togglePending_ = false;
+		debugKeyPressed_ = false;
 		return;
 	}
 
-	if (phase_ == Phase::Closed) CheckForCyberCafe();
+	if (phase_ == Phase::Closed) CheckForComputers();
 
 	const bool toggle = togglePending_;
 	togglePending_ = false;
+	const bool debugKey = debugKeyPressed_;
+	debugKeyPressed_ = false;
 
 	switch (phase_) {
 	case Phase::Closed:
-		if (toggle) BeginOpening();
+		if (debugKey) OpenFromDebugKey();
+		else if (toggle && nearbyComputer_) BeginOpening(*nearbyComputer_);
 		return;
 
 	case Phase::FadingGameOut:
@@ -301,6 +402,7 @@ void BrowserOverlay::Update() {
 		UpdatePad();
 		UpdateMouse();
 	}
+	UpdateSessionClock();
 	LogStats();
 }
 

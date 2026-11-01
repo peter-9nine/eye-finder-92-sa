@@ -6,6 +6,9 @@
 
 #include "ipc.h"
 
+// Players add CEF themselves. Returns what's wrong with the helper's folder, or nothing if it can run.
+std::string BrowserRuntimeProblem(const std::wstring& folder);
+
 class BrowserClient {
 public:
 	~BrowserClient() { Stop(); }

@@ -19,7 +19,7 @@ modloader\EyeFinder92SA\sites\
     images\logo.png
 ```
 
-Don't use `browser\sites`. That folder holds the mod's own pages, such as the EyeFinder home page and mail, and it's replaced when the mod updates.
+Don't use `system\sites`. That folder holds the mod's own pages, such as the EyeFinder home page and mail, and it's replaced when the mod updates.
 
 Restart the game, because new folders are only detected when the game starts. Then open the browser and type `www.mysite.com` in the address bar.
 
@@ -373,13 +373,26 @@ Those are for mods rather than pages. See `EF_SendEmailWithReplies` in [`EyeFind
 
 ## Sharing your site
 
+### Can I make a site that only works from certain computers?
+
+Yes. Add `session` to your `site.json`, with `pd` for police computers or `dark_web` for dark web computers:
+
+```json
+{
+  "title": "Secret Site",
+  "session": "dark_web"
+}
+```
+
+From any other computer, every page and file of your site shows "Connection refused", even if the player types the address. The site is also left out of the home page's list, so tell players the address some other way, such as an email or a link on another restricted site.
+
 ### How do players install it?
 
 Have them copy your site folder into `modloader\EyeFinder92SA\sites`, and any ad folders into `modloader\EyeFinder92SA\ads`, then restart the game.
 
 ### Will updating the mod delete my site?
 
-No. Updates only replace the `browser` folder, and public sites and ads live outside it.
+No. Updates only replace the `system` folder and the browser program, and public sites and ads live outside them.
 
 ## Troubleshooting
 

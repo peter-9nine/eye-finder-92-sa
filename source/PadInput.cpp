@@ -53,7 +53,8 @@ void PadInput::Update() {
 	held_ = 0;
 	leftX_ = leftY_ = rightX_ = rightY_ = 0.0f;
 
-	if (!ginput_ || !ginput_->HasPadInHands()) return;
+	inHands_ = ginput_ && ginput_->HasPadInHands();
+	if (!inHands_) return;
 
 	// The game updates NewState even with the player's controls disabled.
 	const CControllerState& state = CPad::GetPad(0)->NewState;
