@@ -31,6 +31,9 @@ tools/harness/build/
 # Release package, from tools\package.ps1
 dist/
 
+# Harness captures, as in dev\testing.md
+test-output/
+
 # Editor temp files
 *.TMP
 *~RF*.TMP

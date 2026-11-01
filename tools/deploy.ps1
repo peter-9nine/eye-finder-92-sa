@@ -19,6 +19,8 @@ robocopy "$root\helper\build\Release" $browser /MIR /NFL /NDL /NJH /NJS /NP /XF 
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 robocopy "$root\helper\build\system" (Join-Path $target 'system') /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+robocopy "$root\dev" (Join-Path $target 'dev') /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 
 # The locations are meant to be edited where they're installed, so an edited file is never overwritten.
 $locations = Join-Path $target 'locations.json'
