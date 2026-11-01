@@ -151,3 +151,7 @@ Start with [setting up from nothing](dev/getting-started.md#setting-up-from-noth
 ## Author
 
 Peter_99
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE). The libraries it uses keep their own licenses, such as CEF's and those in [`vendor`](vendor/README.md).

@@ -10,7 +10,7 @@ $browser = Join-Path $package 'browser'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $browser | Out-Null
 
-Copy-Item "$root\bin\GTASA\$Configuration\EyeFinder92SA.asi", "$root\locations.json" $package
+Copy-Item "$root\bin\GTASA\$Configuration\EyeFinder92SA.asi", "$root\locations.json", "$root\LICENSE" $package
 Copy-Item "$root\helper\build\Release\EyeFinderBrowser.exe" $browser
 Copy-Item "$root\helper\build\system" $package -Recurse
 Copy-Item "$root\dev" $package -Recurse

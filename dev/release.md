@@ -9,7 +9,7 @@ tools\build.ps1
 tools\package.ps1   # creates dist\EyeFinder92SA and dist\EyeFinder92SA.zip
 ```
 
-`package.ps1` includes the plugin, `locations.json`, `EyeFinderBrowser.exe`, `system`, these docs, and the public sites and ads. It fails if any CEF files reach the package.
+`package.ps1` includes the plugin, `locations.json`, the license, `EyeFinderBrowser.exe`, `system`, these docs, and the public sites and ads. It fails if any CEF files reach the package.
 
 `INSTALL_CEF.txt` is generated from `tools\INSTALL_CEF.txt`, with the download link taken from `tools\fetch-cef.ps1`, so the instructions can't disagree with the build.
 
@@ -35,6 +35,7 @@ CEF must be updated with each release that has real internet access, because Chr
 - [ ] **`locations.json` has real positions.** See [Known issues](known-issues.md).
 - [ ] Remove or decide on the test pages: `tests.html`, `keyboard-tests.html` and `search-tests.html` ship with `www.eyefinder.info`.
 - [ ] Try the package on a clean game: unzip it, confirm the "needs CEF" message appears, then follow `INSTALL_CEF.txt`.
+- [ ] Third-party notices are included. The mod is PolyForm Noncommercial, but its binaries contain code from CEF's wrapper, plugin-sdk, safetyhook and `nlohmann/json`, and their licenses ask for their notices to be kept. The package doesn't include them yet.
 - [ ] `api/FAQ.md` and `api/EyeFinderApi.h` match what the release does.
 - [ ] If the API changed, `EF_API_VERSION` was raised, and nothing was removed or changed.
 

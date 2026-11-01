@@ -7,6 +7,7 @@ Keep this list current: remove what gets fixed, and add what you find.
 - **Placeholder locations.** In `locations.json`, only the cyber cafe uses a known position. The three police stations and the dark web computer, at Zero's RC shop, are approximate and unverified. Stand at each real computer and correct them.
 - **F8 is on by default.** It lets players open any session anywhere. See the [release checklist](release.md#release-checklist).
 - **Chromium's sandbox is off.** See [Before shipping with real internet access](release.md#before-shipping-with-real-internet-access).
+- **Third-party notices aren't in the package.** See the [release checklist](release.md#release-checklist).
 - **Placeholder content.** The police site, the two sample sites in `public/sites/hidden` and the recycle bin's files are placeholder text.
 
 ## Bugs
