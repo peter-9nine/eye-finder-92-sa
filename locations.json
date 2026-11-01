@@ -10,7 +10,7 @@
     {
       "name": "Los Santos Police Department",
       "type": "pd",
-      "position": [246.78, 63.9, 1003.64],
+      "position": [232.2, 79.5, 1005.0],
       "radius": 5.0,
       "interior": 6
     },
@@ -31,7 +31,7 @@
     {
       "name": "Zero's RC shop",
       "type": "dark_web",
-      "position": [-2240.47, 137.06, 1035.41],
+      "position": [-2220.9, 135.70, 1035.6],
       "radius": 5.0,
       "interior": 6
     }
