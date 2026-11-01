@@ -133,7 +133,7 @@ It's a current version of Chromium, so modern HTML, CSS and JavaScript all work.
 
 ### How big should my page be?
 
-There's no fixed size, because it depends on the player's resolution. At 1280x720, the page area is about 944x586 pixels, and the player can maximize the window. Players can also zoom a page, with the buttons in the status bar, Ctrl and `+` or `-`, or Ctrl and the mouse wheel. Use a flexible layout, and test at more than one size. Long pages scroll normally.
+There's no fixed size, because it depends on the player's resolution. At 1280x720, the page area is about 944x586 pixels, and the player can maximize the window. Players can also zoom a page, with the buttons in the status bar, Ctrl and `+` or `-`, or Ctrl and the mouse wheel. Use a flexible layout, and test at more than one size. Long pages scroll normally. With a controller, players point and click with a stick and a button but can't type, so don't make a keyboard the only way through a page.
 
 ### How do I make it look like 1992?
 

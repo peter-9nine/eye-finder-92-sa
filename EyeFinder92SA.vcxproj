@@ -133,6 +133,7 @@
     <ClCompile Include="source\OverlayRenderer.cpp" />
     <ClCompile Include="source\Paths.cpp" />
     <ClCompile Include="source\KeyConfig.cpp" />
+    <ClCompile Include="source\PadInput.cpp" />
     <ClCompile Include="source\Api.cpp" />
     <ClCompile Include="source\MailStore.cpp" />
     <ClCompile Include="source\MailSystem.cpp" />
@@ -145,6 +146,8 @@
     <ClInclude Include="include\OverlayRenderer.h" />
     <ClInclude Include="include\Paths.h" />
     <ClInclude Include="include\KeyConfig.h" />
+    <ClInclude Include="include\PadInput.h" />
+    <ClInclude Include="include\GInputAPI.h" />
     <ClInclude Include="include\ApiQueue.h" />
     <ClInclude Include="include\MailStore.h" />
     <ClInclude Include="include\MailSystem.h" />

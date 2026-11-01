@@ -37,6 +37,9 @@
     <ClCompile Include="source\KeyConfig.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="source\PadInput.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="source\Api.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -67,6 +70,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\KeyConfig.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\PadInput.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\GInputAPI.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\ApiQueue.h">

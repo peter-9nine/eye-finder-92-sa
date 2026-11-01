@@ -2,7 +2,9 @@
 #include "pch.h"
 #include "BrowserClient.h"
 #include "OverlayRenderer.h"
+#include "PadInput.h"
 
+#include <chrono>
 #include <functional>
 
 // Conecta el navegador con el juego: abrir y cerrar, entrada, controles, menú de pausa y dibujo.
@@ -10,6 +12,7 @@ class BrowserOverlay {
 public:
 	void InstallWindowHook();
 
+	void SetPad(const PadInput& pad) { pad_ = &pad; }
 	void SetToggleKey(unsigned int key) { toggleKey_ = key; }
 	// Recibe (tecla, es una repetición) y devuelve true si la tecla ya no debe llegar a nadie más.
 	void SetKeyFilter(std::function<bool(unsigned int, bool)> filter) { keyFilter_ = std::move(filter); }
@@ -47,6 +50,10 @@ private:
 	void CheckForCyberCafe();
 	bool EnsureHelper();
 	void UpdateMouse();
+	void UpdatePad();
+	void MoveCursorWithPad(float seconds);
+	void ScrollWithPad(float seconds);
+	void SendPadShortcut(int32_t key, uint32_t modifiers);
 	void ForwardKey(ef::EventType type, WPARAM wParam, LPARAM lParam);
 	void LogStats();
 	float Blackness() const;
@@ -70,6 +77,15 @@ private:
 	bool haveMouse_ = false;
 	uint32_t buttons_ = 0;
 	int unreadMail_ = 0;
+
+	const PadInput* pad_ = nullptr;
+	uint32_t padIgnored_ = 0;  // Botones que ya estaban pulsados al llegar: no cuentan hasta soltarlos.
+	std::chrono::steady_clock::time_point padLastUpdate_{};
+	float padCursorCarryX_ = 0.0f;
+	float padCursorCarryY_ = 0.0f;
+	float padWheelCarryX_ = 0.0f;
+	float padWheelCarryY_ = 0.0f;
+	DWORD padRepeatAt_[2] = {};
 
 	// Estadísticas del prototipo.
 	DWORD statsStart_ = 0;

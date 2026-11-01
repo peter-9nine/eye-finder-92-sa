@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "BrowserOverlay.h"
 #include "MailSystem.h"
+#include "PadInput.h"
 #include "Paths.h"
 
 using namespace plugin;
@@ -9,27 +10,18 @@ namespace {
 
 BrowserOverlay gOverlay;
 MailSystem gMail;
+PadInput gPad;
 safetyhook::InlineHook gMouseSetPos;
-safetyhook::InlineHook gGenericSave;
-safetyhook::InlineHook gGenericLoad;
+
+// Se engancha la llamada y no la función, para encadenar lo que hubiera si otro mod ya la cambió.
+// Es lo que usan por dentro los eventos del SDK, pero estos no dan el valor devuelto, y hace falta.
+using GenericSaveCall = injector::function_hooker<injector::scoped_call, 0x00619081, char(int)>;
+using GenericLoadCall = injector::function_hooker<injector::scoped_call, 0x0053C70B, char(bool*)>;
 
 // El juego recentra el cursor en cada fotograma; con el navegador abierto hay que impedirlo.
 void __cdecl HookMouseSetPos(RwV2d* position) {
 	if (gOverlay.UsesCursor()) return;
 	gMouseSetPos.original<int(__cdecl*)(RwV2d*)>()(position);
-}
-
-// Cada partida guardada tiene su archivo del mod. Solo se escribe si el juego ha guardado de verdad.
-char __cdecl HookGenericSave(int unused) {
-	const char saved = gGenericSave.original<char(__cdecl*)(int)>()(unused);
-	if (saved) gMail.OnGameSaved();
-	return saved;
-}
-
-char __cdecl HookGenericLoad(bool* notFound) {
-	const char loaded = gGenericLoad.original<char(__cdecl*)(bool*)>()(notFound);
-	if (loaded) gMail.OnGameLoaded();
-	return loaded;
 }
 
 }  // namespace
@@ -38,14 +30,27 @@ struct Main {
 	Main() {
 		Log("EyeFinder92SA loaded");
 		gMouseSetPos = safetyhook::create_inline(reinterpret_cast<void*>(0x007453F0), HookMouseSetPos);
-		gGenericSave = safetyhook::create_inline(reinterpret_cast<void*>(0x005D13E0), HookGenericSave);
-		gGenericLoad = safetyhook::create_inline(reinterpret_cast<void*>(0x005D17B0), HookGenericLoad);
+
+		// Cada partida guardada tiene su archivo del mod. Solo se escribe si el juego ha guardado de verdad.
+		injector::make_static_hook<GenericSaveCall>([](GenericSaveCall::func_type original, int unused) {
+			const char saved = original(unused);
+			if (saved) gMail.OnGameSaved();
+			return saved;
+		});
+		injector::make_static_hook<GenericLoadCall>([](GenericLoadCall::func_type original, bool* notFound) {
+			const char loaded = original(notFound);
+			if (loaded) gMail.OnGameLoaded();
+			return loaded;
+		});
 
 		Events::initRwEvent += [] {
+			gPad.Initialize();
+			gOverlay.SetPad(gPad);
 			gOverlay.InstallWindowHook();
-			gMail.Initialize(gOverlay);
+			gMail.Initialize(gOverlay, gPad);
 		};
 		Events::gameProcessEvent += [] {
+			gPad.Update();
 			gOverlay.Update();
 			gMail.Update();
 		};
@@ -61,6 +66,9 @@ struct Main {
 		};
 		Events::d3dLostEvent += [] { gOverlay.OnDeviceLost(); };
 		Events::d3dResetEvent += [] { gOverlay.OnDeviceReset(); };
-		Events::shutdownRwEvent += [] { gOverlay.Shutdown(); };
+		Events::shutdownRwEvent += [] {
+			gOverlay.Shutdown();
+			gPad.Shutdown();
+		};
 	}
 } gInstance;

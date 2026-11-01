@@ -2,6 +2,8 @@
 #include "BrowserOverlay.h"
 #include "Paths.h"
 
+#include <cmath>
+
 namespace {
 
 BrowserOverlay* gOverlay = nullptr;
@@ -14,6 +16,11 @@ constexpr DWORD kBrowserFadeOutMs = 350;
 const CVector kCyberCafePosition = { 1170.4697f, -1655.1893f, 1014.3158f };
 constexpr float kCyberCafeRadius = 3.0f;
 
+constexpr float kPadCursorScreensPerSecond = 1.2f;  // Altos de pantalla, con el stick a tope.
+constexpr float kPadWheelPerSecond = 2400.0f;       // Una muesca de la rueda son 120.
+constexpr DWORD kPadRepeatDelayMs = 400;
+constexpr DWORD kPadRepeatIntervalMs = 70;
+
 uint32_t KeyboardModifiers() {
 	uint32_t modifiers = 0;
 	if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= ef::kModShift;
@@ -24,6 +31,14 @@ uint32_t KeyboardModifiers() {
 
 bool PauseMenuActive() {
 	return FrontEndMenuManager.m_bMenuActive;
+}
+
+// Lo que enviaría Windows con esa tecla. Chromium saca de aquí el código físico.
+int32_t PadKeyParam(int32_t key, bool repeat) {
+	uint32_t param = 1u | (MapVirtualKeyA(static_cast<UINT>(key), MAPVK_VK_TO_VSC) << 16);
+	if (key == VK_UP || key == VK_DOWN || key == VK_LEFT || key == VK_RIGHT) param |= 1u << 24;
+	if (repeat) param |= 1u << 30;
+	return static_cast<int32_t>(param);
 }
 
 }  // namespace
@@ -151,6 +166,8 @@ void BrowserOverlay::FinishOpening() {
 
 	haveMouse_ = false;
 	buttons_ = 0;
+	// A es esprintar: si venía corriendo, no debe hacer clic al abrirse.
+	padIgnored_ = pad_->Held();
 	phase_ = Phase::Open;
 	phaseStart_ = GetTickCount();
 	client_.Send({ ef::EventType::Show });
@@ -214,6 +231,8 @@ void BrowserOverlay::SyncPauseMenu() {
 
 	haveMouse_ = false;
 	buttons_ = 0;
+	// El botón con el que se salió del menú sigue pulsado: no debe hacer clic en la página.
+	padIgnored_ = pad_->Held();
 	client_.Send({ ef::EventType::Show });
 }
 
@@ -277,7 +296,11 @@ void BrowserOverlay::Update() {
 		return;
 	}
 
-	if (GetForegroundWindow() == window_) UpdateMouse();
+	if (GetForegroundWindow() == window_) {
+		// Primero el mando: mueve el cursor de Windows, y UpdateMouse lo lee como si fuera el ratón.
+		UpdatePad();
+		UpdateMouse();
+	}
 	LogStats();
 }
 
@@ -296,6 +319,7 @@ void BrowserOverlay::UpdateMouse() {
 	if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) buttons |= ef::kModLeftMouse;
 	if (GetAsyncKeyState(VK_MBUTTON) & 0x8000) buttons |= ef::kModMiddleMouse;
 	if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) buttons |= ef::kModRightMouse;
+	if (pad_->Held() & ~padIgnored_ & kPadA) buttons |= ef::kModLeftMouse;
 
 	const uint32_t modifiers = KeyboardModifiers();
 
@@ -322,6 +346,109 @@ void BrowserOverlay::UpdateMouse() {
 	CPad* pad = CPad::GetPad(0);
 	const int wheel = (pad->NewMouseControllerState.wheelUp ? 120 : 0) - (pad->NewMouseControllerState.wheelDown ? 120 : 0);
 	if (wheel != 0) client_.Send({ ef::EventType::Wheel, x, y, 0, wheel, modifiers | buttons_ });
+}
+
+void BrowserOverlay::MoveCursorWithPad(float seconds) {
+	const float stickX = pad_->LeftX();
+	const float stickY = pad_->LeftY();
+	if (stickX == 0.0f && stickY == 0.0f) {
+		padCursorCarryX_ = padCursorCarryY_ = 0.0f;
+		return;
+	}
+
+	POINT point;
+	RECT client;
+	if (!GetCursorPos(&point) || !ScreenToClient(window_, &point) || !GetClientRect(window_, &client)) return;
+	if (client.right <= 0 || client.bottom <= 0) return;
+
+	// La velocidad crece con el cuadrado: despacio para apuntar, y rápido para cruzar la pantalla.
+	const float speed = std::hypot(stickX, stickY) * client.bottom * kPadCursorScreensPerSecond * seconds;
+	padCursorCarryX_ += stickX * speed;
+	padCursorCarryY_ -= stickY * speed;
+
+	const int moveX = static_cast<int>(padCursorCarryX_);
+	const int moveY = static_cast<int>(padCursorCarryY_);
+	if (moveX == 0 && moveY == 0) return;
+	padCursorCarryX_ -= moveX;
+	padCursorCarryY_ -= moveY;
+
+	// En una ventana, el cursor no debe irse a otro programa donde A no llega.
+	point.x = std::clamp<LONG>(point.x + moveX, 0, client.right - 1);
+	point.y = std::clamp<LONG>(point.y + moveY, 0, client.bottom - 1);
+	if (ClientToScreen(window_, &point)) SetCursorPos(point.x, point.y);
+}
+
+void BrowserOverlay::ScrollWithPad(float seconds) {
+	if (!haveMouse_) return;
+
+	const float stickX = pad_->RightX();
+	const float stickY = pad_->RightY();
+	if (stickX == 0.0f && stickY == 0.0f) {
+		padWheelCarryX_ = padWheelCarryY_ = 0.0f;
+		return;
+	}
+
+	// Para Chromium, un delta positivo sube la página o la lleva a la izquierda.
+	const float speed = std::hypot(stickX, stickY) * kPadWheelPerSecond * seconds;
+	padWheelCarryX_ -= stickX * speed;
+	padWheelCarryY_ += stickY * speed;
+
+	const int wheelX = static_cast<int>(padWheelCarryX_);
+	const int wheelY = static_cast<int>(padWheelCarryY_);
+	if (wheelX == 0 && wheelY == 0) return;
+	padWheelCarryX_ -= wheelX;
+	padWheelCarryY_ -= wheelY;
+
+	client_.Send({ ef::EventType::Wheel, mouseX_, mouseY_, wheelX, wheelY, KeyboardModifiers() | buttons_ });
+}
+
+void BrowserOverlay::SendPadShortcut(int32_t key, uint32_t modifiers) {
+	client_.Send({ ef::EventType::KeyDown, 0, 0, key, PadKeyParam(key, false), modifiers | buttons_ });
+	client_.Send({ ef::EventType::KeyUp, 0, 0, key, PadKeyParam(key, false), modifiers | buttons_ });
+}
+
+void BrowserOverlay::UpdatePad() {
+	padIgnored_ &= pad_->Held();
+
+	const auto now = std::chrono::steady_clock::now();
+	// Tras un parón, o la primera vez, el cursor no debe dar un salto.
+	const float seconds = (std::min)(std::chrono::duration<float>(now - padLastUpdate_).count(), 0.1f);
+	padLastUpdate_ = now;
+
+	MoveCursorWithPad(seconds);
+	ScrollWithPad(seconds);
+
+	const auto pressed = [this](PadButton button) { return pad_->Pressed(button) && !(padIgnored_ & button); };
+
+	// Son los mismos atajos que los del teclado, que ya maneja el helper.
+	if (pressed(kPadB)) SendPadShortcut(VK_LEFT, ef::kModAlt);
+	if (pressed(kPadY)) SendPadShortcut(VK_RIGHT, ef::kModAlt);
+	if (pressed(kPadX)) SendPadShortcut(VK_F5, 0);
+	if (pressed(kPadLeftShoulder)) SendPadShortcut(VK_TAB, ef::kModControl | ef::kModShift);
+	if (pressed(kPadRightShoulder)) SendPadShortcut(VK_TAB, ef::kModControl);
+
+	// Las flechas sirven para las listas desplegables y las páginas, y se repiten como en un teclado.
+	// Izquierda y derecha son del busca.
+	static constexpr struct { PadButton button; int32_t key; } kArrows[] = {
+		{ kPadDPadUp, VK_UP }, { kPadDPadDown, VK_DOWN },
+	};
+	const DWORD tick = GetTickCount();
+	for (size_t i = 0; i < std::size(kArrows); ++i) {
+		const PadButton button = kArrows[i].button;
+		const int32_t key = kArrows[i].key;
+
+		if (pressed(button)) {
+			client_.Send({ ef::EventType::KeyDown, 0, 0, key, PadKeyParam(key, false), buttons_ });
+			padRepeatAt_[i] = tick + kPadRepeatDelayMs;
+		}
+		else if (pad_->Released(button)) {
+			client_.Send({ ef::EventType::KeyUp, 0, 0, key, PadKeyParam(key, false), buttons_ });
+		}
+		else if (pad_->Held(button) && !(padIgnored_ & button) && static_cast<int32_t>(tick - padRepeatAt_[i]) >= 0) {
+			client_.Send({ ef::EventType::KeyDown, 0, 0, key, PadKeyParam(key, true), buttons_ });
+			padRepeatAt_[i] = tick + kPadRepeatIntervalMs;
+		}
+	}
 }
 
 void BrowserOverlay::Draw() {

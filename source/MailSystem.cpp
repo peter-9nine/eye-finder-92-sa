@@ -6,6 +6,9 @@
 
 namespace {
 
+// El juego también ve el botón, así que abrir el busca no puede ser una simple pulsación.
+constexpr DWORD kPadPagerHoldMs = 500;
+
 // Los avisos no deben interrumpir escenas ni aparecer sobre el menú.
 bool GameCanShowNotifications() {
 	return !FrontEndMenuManager.m_bMenuActive && !TheCamera.m_bWideScreenOn && !CCutsceneMgr::ms_running;
@@ -26,8 +29,9 @@ std::string GameDate() {
 
 }  // namespace
 
-void MailSystem::Initialize(BrowserOverlay& overlay) {
+void MailSystem::Initialize(BrowserOverlay& overlay, const PadInput& pad) {
 	overlay_ = &overlay;
+	pad_ = &pad;
 	saveFolder_ = SaveDataDirectory();
 	store_.SetSessionPath(SessionSavePath());
 
@@ -282,32 +286,61 @@ bool MailSystem::HandleKey(unsigned int key, bool repeat) {
 		// Con el ordenador abierto, una letra o un número son para escribir.
 		const bool printable = (key >= '0' && key <= '9') || (key >= 'A' && key <= 'Z');
 		if (overlay_->IsOpen() && printable) return false;
-		if (repeat) return true;
-
-		if (memoryOpen_ && pager_.IsBusy()) {
-			pager_.Close();
-			memoryOpen_ = false;
-			return true;
-		}
-
-		memoryOpen_ = true;
-		memoryIndex_ = 0;
-		ShowMemoryEntry();
+		if (!repeat) TogglePagerMemory();
 		return true;
 	}
 
 	// Las teclas de avance solo son del busca mientras está en pantalla.
 	if (!memoryOpen_ || !pager_.IsBusy()) return false;
 	if (key != keys_.pagerOlder && key != keys_.pagerNewer) return false;
-	if (repeat) return true;
+	if (!repeat) StepPagerMemory(key == keys_.pagerOlder);
+	return true;
+}
 
+void MailSystem::TogglePagerMemory() {
+	if (memoryOpen_ && pager_.IsBusy()) {
+		pager_.Close();
+		memoryOpen_ = false;
+		return;
+	}
+
+	memoryOpen_ = true;
+	memoryIndex_ = 0;
+	ShowMemoryEntry();
+}
+
+void MailSystem::StepPagerMemory(bool older) {
 	const size_t count = store_.PagerEntries().size();
-	if (key == keys_.pagerOlder && memoryIndex_ + 1 < count) ++memoryIndex_;
-	else if (key == keys_.pagerNewer && memoryIndex_ > 0) --memoryIndex_;
+	if (older && memoryIndex_ + 1 < count) ++memoryIndex_;
+	else if (!older && memoryIndex_ > 0) --memoryIndex_;
 
 	// Aunque no haya más mensajes, seguir pulsando mantiene el busca abierto.
 	ShowMemoryEntry();
-	return true;
+}
+
+// Mantener la cruceta a la izquierda abre o cierra el busca. Con él en pantalla, izquierda y derecha lo recorren.
+void MailSystem::UpdatePad() {
+	if (!GameCanShowNotifications()) {
+		padHoldStart_ = 0;
+		return;
+	}
+
+	const bool browsing = memoryOpen_ && pager_.IsBusy();
+	if (browsing && pad_->Pressed(kPadDPadRight)) StepPagerMemory(false);
+
+	if (pad_->Pressed(kPadDPadLeft)) {
+		padHoldStart_ = GetTickCount();
+		if (browsing) StepPagerMemory(true);
+	}
+	else if (!pad_->Held(kPadDPadLeft)) {
+		padHoldStart_ = 0;
+	}
+
+	if (padHoldStart_ != 0 && GetTickCount() - padHoldStart_ >= kPadPagerHoldMs) {
+		// Una sola vez por pulsación: hay que soltar para volver a usarlo.
+		padHoldStart_ = 0;
+		TogglePagerMemory();
+	}
 }
 
 void MailSystem::ShowNextPage() {
@@ -376,6 +409,7 @@ void MailSystem::Update() {
 	HandleApiRequests();
 	HandleBrowserOperations();
 	ShowNextText();
+	UpdatePad();
 	ShowNextPage();
 
 	const DWORD now = GetTickCount();
