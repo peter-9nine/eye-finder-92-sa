@@ -16,7 +16,7 @@ add_executable(EyeFinderHarness
   "${ROOT}/source/KeyConfig.cpp"
   "${ROOT}/source/Locations.cpp")
 
-set(NLOHMANN "$ENV{PLUGIN_SDK_DIR}/tools/myplugin-gen/generated/shared")
+set(NLOHMANN "${ROOT}/vendor")
 target_include_directories(EyeFinderHarness PRIVATE "${ROOT}/include" "${ROOT}/shared" "${ROOT}/api" "${NLOHMANN}")
 target_compile_definitions(EyeFinderHarness PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(EyeFinderHarness PRIVATE d3d9)

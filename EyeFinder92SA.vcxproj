@@ -41,7 +41,6 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros">
-    <MYPLUGIN_SHARED>$(PLUGIN_SDK_DIR)\tools\myplugin-gen\generated\shared</MYPLUGIN_SHARED>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release GTASA|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -50,7 +49,7 @@
     <IntDir>$(ProjectDir)obj\GTASA\Release\</IntDir>
     <TargetName>EyeFinder92SA</TargetName>
     <TargetExt>.asi</TargetExt>
-    <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(IncludePath)</IncludePath>
+    <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\vendor;$(IncludePath)</IncludePath>
     <LibraryPath>$(PLUGIN_SDK_DIR)\shared\dxsdk;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug GTASA|Win32'">
@@ -60,7 +59,7 @@
     <IntDir>$(ProjectDir)obj\GTASA\Debug\</IntDir>
     <TargetName>EyeFinder92SA</TargetName>
     <TargetExt>.asi</TargetExt>
-    <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(MYPLUGIN_SHARED);$(IncludePath)</IncludePath>
+    <IncludePath>$(IntDir)generated;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\dxsdk;$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\vendor;$(IncludePath)</IncludePath>
     <LibraryPath>$(PLUGIN_SDK_DIR)\shared\dxsdk;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release GTASA|Win32'">
@@ -68,7 +67,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>_CRT_NON_CONFORMING_SWPRINTFS;GTASA;GTAGAME_NAME="San Andreas";GTAGAME_ABBR="SA";GTAGAME_ABBRLOW="sa";GTAGAME_PROTAGONISTNAME="CJ";GTAGAME_CITYNAME="San Andreas";PLUGIN_SGV_10US;RW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\shared;$(ProjectDir)\api;$(MYPLUGIN_SHARED);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\shared;$(ProjectDir)\api;$(ProjectDir)\vendor;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -97,7 +96,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>_CRT_NON_CONFORMING_SWPRINTFS;GTASA;GTAGAME_NAME="San Andreas";GTAGAME_ABBR="SA";GTAGAME_ABBRLOW="sa";GTAGAME_PROTAGONISTNAME="CJ";GTAGAME_CITYNAME="San Andreas";PLUGIN_SGV_10US;RW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\shared;$(ProjectDir)\api;$(MYPLUGIN_SHARED);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(PLUGIN_SDK_DIR)\plugin_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\enums;$(PLUGIN_SDK_DIR)\plugin_sa\game_sa\rw;$(PLUGIN_SDK_DIR)\shared;$(PLUGIN_SDK_DIR)\shared\game;$(PLUGIN_SDK_DIR)\shared\rwd3d9;$(ProjectDir);$(ProjectDir)\source;$(ProjectDir)\include;$(ProjectDir)\shared;$(ProjectDir)\api;$(ProjectDir)\vendor;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
