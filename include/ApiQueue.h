@@ -1,5 +1,5 @@
 #pragma once
-// Cola entre la API pública, que se puede llamar desde cualquier hilo, y el hilo del juego.
+// Queue between the public API, which can be called from any thread, and the game thread.
 #include <map>
 #include <string>
 #include <vector>
@@ -10,12 +10,12 @@ enum class RequestKind { Email, Text, Page, RunScript };
 
 struct Request {
 	RequestKind kind = RequestKind::Text;
-	std::string from;     // Remitente del correo o del mensaje de busca.
+	std::string from;     // Sender of the email or pager message.
 	std::string subject;
-	std::string body;     // Cuerpo del correo o texto del aviso.
+	std::string body;     // Body of the email, or text of the notification.
 	int notify = 0;
 
-	// Correos con respuesta.
+	// Emails with replies.
 	std::string replyKey;
 	std::string goodText;
 	std::string badText;
@@ -23,15 +23,15 @@ struct Request {
 	std::string badScript;
 };
 
-// Solo desde el hilo del juego.
+// Only from the game thread.
 std::vector<Request> Drain();
 void SetUnreadCount(int count);
 
-// Lo que ha respondido el jugador en esta partida, para EF_GetReply desde cualquier hilo.
+// What the player has answered in this game, for EF_GetReply from any thread.
 void ClearReplies();
 void SetReply(const std::string& key, int answer);
 
-// Valores compartidos. La API los ve al momento; la partida los recoge en el hilo del juego.
+// Shared values. The API sees them at once, and the game picks them up on the game thread.
 bool IsValidValueKey(const std::string& key);
 std::map<std::string, std::string> DrainValueChanges();
 void ReplaceValues(const std::map<std::string, std::string>& values);

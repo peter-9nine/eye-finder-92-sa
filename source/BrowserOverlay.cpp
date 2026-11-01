@@ -12,12 +12,12 @@ constexpr DWORD kGameFadeMs = 1100;
 constexpr DWORD kBrowserFadeInMs = 400;
 constexpr DWORD kBrowserFadeOutMs = 350;
 
-// El ordenador del cibercafé.
+// The cyber cafe's computer.
 const CVector kCyberCafePosition = { 1170.4697f, -1655.1893f, 1014.3158f };
 constexpr float kCyberCafeRadius = 3.0f;
 
-constexpr float kPadCursorScreensPerSecond = 1.2f;  // Altos de pantalla, con el stick a tope.
-constexpr float kPadWheelPerSecond = 2400.0f;       // Una muesca de la rueda son 120.
+constexpr float kPadCursorScreensPerSecond = 1.2f;  // Screen heights, with the stick all the way over.
+constexpr float kPadWheelPerSecond = 2400.0f;       // One wheel notch is 120.
 constexpr DWORD kPadRepeatDelayMs = 400;
 constexpr DWORD kPadRepeatIntervalMs = 70;
 
@@ -33,7 +33,7 @@ bool PauseMenuActive() {
 	return FrontEndMenuManager.m_bMenuActive;
 }
 
-// Lo que enviaría Windows con esa tecla. Chromium saca de aquí el código físico.
+// What Windows would send for that key. Chromium gets the physical code from here.
 int32_t PadKeyParam(int32_t key, bool repeat) {
 	uint32_t param = 1u | (MapVirtualKeyA(static_cast<UINT>(key), MAPVK_VK_TO_VSC) << 16);
 	if (key == VK_UP || key == VK_DOWN || key == VK_LEFT || key == VK_RIGHT) param |= 1u << 24;
@@ -67,7 +67,7 @@ bool BrowserOverlay::UsesCursor() const {
 LRESULT CALLBACK BrowserOverlay::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
 	BrowserOverlay& self = *gOverlay;
 
-	// El menú de pausa es del juego: mientras esté abierto, no tocamos nada.
+	// The pause menu belongs to the game: while it's open, touch nothing.
 	if (!PauseMenuActive()) {
 		if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && self.keyFilter_ &&
 			self.keyFilter_(static_cast<unsigned int>(wParam), (lParam & (1 << 30)) != 0)) {
@@ -82,17 +82,17 @@ LRESULT CALLBACK BrowserOverlay::WindowProc(HWND window, UINT message, WPARAM wP
 		if (self.phase_ != Phase::Closed) {
 			switch (message) {
 			case WM_KEYDOWN:
-				// Escape abre el menú de pausa, como siempre.
+				// Escape opens the pause menu, as always.
 				if (wParam == VK_ESCAPE) break;
 				self.ForwardKey(ef::EventType::KeyDown, wParam, lParam);
 				return 0;
 			case WM_SYSKEYDOWN:
-				if (wParam == VK_F4 || wParam == VK_TAB) break;  // Alt+F4 y Alt+Tab siguen funcionando.
+				if (wParam == VK_F4 || wParam == VK_TAB) break;  // Alt+F4 and Alt+Tab keep working.
 				self.ForwardKey(ef::EventType::KeyDown, wParam, lParam);
 				return 0;
 			case WM_KEYUP:
 			case WM_SYSKEYUP:
-				// El juego también lo recibe: si no, una tecla pulsada al abrir se quedaría atascada.
+				// The game gets it too: otherwise a key held on opening would stick.
 				if (wParam != VK_ESCAPE) self.ForwardKey(ef::EventType::KeyUp, wParam, lParam);
 				break;
 			case WM_CHAR:
@@ -140,7 +140,7 @@ bool BrowserOverlay::EnsureHelper() {
 }
 
 void BrowserOverlay::BeginOpening() {
-	// Arrancamos el helper ya: el fundido le da tiempo a tener la página lista.
+	// Start the helper now: the fade gives it time to get the page ready.
 	if (!EnsureHelper()) {
 		CHud::SetHelpMessage("EyeFinder: the browser could not start. See EyeFinder92SA.log.", true, false, false);
 		return;
@@ -161,12 +161,12 @@ void BrowserOverlay::FinishOpening() {
 	CTheScripts::bDisplayHud = 0;
 	CHud::bScriptDontDisplayRadar = 1;
 
-	// El juego vuelve a verse detrás del navegador, listo para cuando se cierre.
+	// The game is visible again behind the browser, ready for when it closes.
 	TheCamera.Fade(0.5f, 1);
 
 	haveMouse_ = false;
 	buttons_ = 0;
-	// A es esprintar: si venía corriendo, no debe hacer clic al abrirse.
+	// A is sprint: running up to the computer must not click when it opens.
 	padIgnored_ = pad_->Held();
 	phase_ = Phase::Open;
 	phaseStart_ = GetTickCount();
@@ -209,7 +209,7 @@ float BrowserOverlay::Blackness() const {
 	return 0.0f;
 }
 
-// El menú de pausa cubre el navegador: las páginas callan y, al volver, todo sigue donde estaba.
+// The pause menu covers the browser: pages go quiet and, on return, everything is where it was.
 void BrowserOverlay::SyncPauseMenu() {
 	if (phase_ != Phase::Open && phase_ != Phase::FadingBrowserOut) return;
 
@@ -222,7 +222,7 @@ void BrowserOverlay::SyncPauseMenu() {
 		return;
 	}
 
-	// En el menú se puede haber cambiado la resolución.
+	// The resolution may have changed in the menu.
 	if (!EnsureHelper()) {
 		ReleaseGame();
 		CHud::SetHelpMessage("EyeFinder: the browser could not start. See EyeFinder92SA.log.", true, false, false);
@@ -231,7 +231,7 @@ void BrowserOverlay::SyncPauseMenu() {
 
 	haveMouse_ = false;
 	buttons_ = 0;
-	// El botón con el que se salió del menú sigue pulsado: no debe hacer clic en la página.
+	// The button that left the menu is still held, and must not click the page.
 	padIgnored_ = pad_->Held();
 	client_.Send({ ef::EventType::Show });
 }
@@ -281,7 +281,7 @@ void BrowserOverlay::Update() {
 		break;
 	}
 
-	// Si el helper muere, el juego sigue: volvemos a él y avisamos.
+	// If the helper dies, the game goes on: go back to it and tell the player.
 	if (client_.HasExited()) {
 		Log("The browser helper exited unexpectedly");
 		client_.Stop();
@@ -297,7 +297,7 @@ void BrowserOverlay::Update() {
 	}
 
 	if (GetForegroundWindow() == window_) {
-		// Primero el mando: mueve el cursor de Windows, y UpdateMouse lo lee como si fuera el ratón.
+		// The pad goes first: it moves the Windows cursor, and UpdateMouse reads that as if it were the mouse.
 		UpdatePad();
 		UpdateMouse();
 	}
@@ -310,7 +310,7 @@ void BrowserOverlay::UpdateMouse() {
 	if (!GetCursorPos(&point) || !ScreenToClient(window_, &point) || !GetClientRect(window_, &client)) return;
 	if (client.right <= 0 || client.bottom <= 0) return;
 
-	// La ventana puede tener otro tamaño que el búfer del juego.
+	// The window can be a different size from the game's buffer.
 	const int x = std::clamp<int>(point.x * RsGlobal.maximumWidth / client.right, 0, RsGlobal.maximumWidth - 1);
 	const int y = std::clamp<int>(point.y * RsGlobal.maximumHeight / client.bottom, 0, RsGlobal.maximumHeight - 1);
 	const bool inside = point.x >= 0 && point.y >= 0 && point.x < client.right && point.y < client.bottom;
@@ -319,7 +319,7 @@ void BrowserOverlay::UpdateMouse() {
 	if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) buttons |= ef::kModLeftMouse;
 	if (GetAsyncKeyState(VK_MBUTTON) & 0x8000) buttons |= ef::kModMiddleMouse;
 	if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) buttons |= ef::kModRightMouse;
-	// Con el teclado en pantalla abierto, A pulsa sus teclas. El ratón sigue haciendo clic.
+	// With the on-screen keyboard open, A presses its keys. The mouse still clicks.
 	const bool mouseLeft = (buttons & ef::kModLeftMouse) != 0;
 	if (!padKeyboardOpen_ && (pad_->Held() & ~padIgnored_ & kPadA)) buttons |= ef::kModLeftMouse;
 
@@ -339,10 +339,10 @@ void BrowserOverlay::UpdateMouse() {
 		const bool now = (buttons & entry.flag) != 0;
 		const bool before = (buttons_ & entry.flag) != 0;
 		if (now == before) continue;
-		if (now && !inside) continue;  // Un clic fuera de la ventana no es nuestro.
+		if (now && !inside) continue;  // A click outside the window isn't ours.
 
 		buttons_ = now ? (buttons_ | entry.flag) : (buttons_ & ~entry.flag);
-		// El helper abre el teclado en pantalla solo si el clic viene del mando.
+		// The helper only opens the on-screen keyboard if the click came from the pad.
 		const int32_t fromPad = now && entry.button == 0 && !mouseLeft ? 1 : 0;
 		client_.Send({ now ? ef::EventType::MouseDown : ef::EventType::MouseUp, x, y, entry.button, fromPad, modifiers | buttons_ });
 	}
@@ -365,7 +365,7 @@ void BrowserOverlay::MoveCursorWithPad(float seconds) {
 	if (!GetCursorPos(&point) || !ScreenToClient(window_, &point) || !GetClientRect(window_, &client)) return;
 	if (client.right <= 0 || client.bottom <= 0) return;
 
-	// La velocidad crece con el cuadrado: despacio para apuntar, y rápido para cruzar la pantalla.
+	// Speed grows with the square: slow for aiming, and fast for crossing the screen.
 	const float speed = std::hypot(stickX, stickY) * client.bottom * kPadCursorScreensPerSecond * seconds;
 	padCursorCarryX_ += stickX * speed;
 	padCursorCarryY_ -= stickY * speed;
@@ -376,7 +376,7 @@ void BrowserOverlay::MoveCursorWithPad(float seconds) {
 	padCursorCarryX_ -= moveX;
 	padCursorCarryY_ -= moveY;
 
-	// En una ventana, el cursor no debe irse a otro programa donde A no llega.
+	// In a window, the cursor must not wander onto another program, where A doesn't reach.
 	point.x = std::clamp<LONG>(point.x + moveX, 0, client.right - 1);
 	point.y = std::clamp<LONG>(point.y + moveY, 0, client.bottom - 1);
 	if (ClientToScreen(window_, &point)) SetCursorPos(point.x, point.y);
@@ -392,7 +392,7 @@ void BrowserOverlay::ScrollWithPad(float seconds) {
 		return;
 	}
 
-	// Para Chromium, un delta positivo sube la página o la lleva a la izquierda.
+	// To Chromium, a positive delta scrolls the page up or to the left.
 	const float speed = std::hypot(stickX, stickY) * kPadWheelPerSecond * seconds;
 	padWheelCarryX_ -= stickX * speed;
 	padWheelCarryY_ += stickY * speed;
@@ -415,11 +415,11 @@ void BrowserOverlay::UpdatePad() {
 	padIgnored_ &= pad_->Held();
 
 	const auto now = std::chrono::steady_clock::now();
-	// Tras un parón, o la primera vez, el cursor no debe dar un salto.
+	// After a stall, or the first time, the cursor must not jump.
 	const float seconds = (std::min)(std::chrono::duration<float>(now - padLastUpdate_).count(), 0.1f);
 	padLastUpdate_ = now;
 
-	// El botón que abre o cierra el teclado sigue pulsado: no debe pulsar una tecla ni hacer clic debajo.
+	// The button that opens or closes the keyboard is still held: it must not press a key or click underneath.
 	const bool keyboardOpen = client_.KeyboardOpen();
 	if (keyboardOpen != padKeyboardOpen_) {
 		padKeyboardOpen_ = keyboardOpen;
@@ -436,15 +436,15 @@ void BrowserOverlay::UpdatePad() {
 
 	const auto pressed = [this](PadButton button) { return pad_->Pressed(button) && !(padIgnored_ & button); };
 
-	// Son los mismos atajos que los del teclado, que ya maneja el helper.
+	// These are the same shortcuts as the keyboard's, which the helper already handles.
 	if (pressed(kPadB)) SendPadShortcut(VK_LEFT, ef::kModAlt);
 	if (pressed(kPadY)) SendPadShortcut(VK_RIGHT, ef::kModAlt);
 	if (pressed(kPadX)) SendPadShortcut(VK_F5, 0);
 	if (pressed(kPadLeftShoulder)) SendPadShortcut(VK_TAB, ef::kModControl | ef::kModShift);
 	if (pressed(kPadRightShoulder)) SendPadShortcut(VK_TAB, ef::kModControl);
 
-	// Las flechas sirven para las listas desplegables y las páginas, y se repiten como en un teclado.
-	// Izquierda y derecha son del busca.
+	// The arrows are for dropdowns and pages, and repeat as on a keyboard.
+	// Left and right belong to the pager.
 	static constexpr struct { PadButton button; int32_t key; } kArrows[] = {
 		{ kPadDPadUp, VK_UP }, { kPadDPadDown, VK_DOWN },
 	};
@@ -470,7 +470,7 @@ void BrowserOverlay::UpdatePad() {
 void BrowserOverlay::UpdatePadKeyboard() {
 	const auto held = [this](PadButton button) { return (pad_->Held() & ~padIgnored_ & button) != 0; };
 
-	// El stick funciona como la cruceta, en la dirección donde esté más inclinado.
+	// The stick works like the D-pad, in the direction it's tilted most.
 	const float stickX = pad_->LeftX();
 	const float stickY = pad_->LeftY();
 	const bool horizontal = std::abs(stickX) >= std::abs(stickY);
@@ -569,7 +569,7 @@ void BrowserOverlay::OnDeviceLost() {
 }
 
 void BrowserOverlay::OnDeviceReset() {
-	// La textura se recrea con el siguiente fotograma, así que pedimos uno.
+	// The texture is recreated with the next frame, so ask for one.
 	if (client_.IsRunning()) client_.Send({ ef::EventType::Invalidate });
 }
 

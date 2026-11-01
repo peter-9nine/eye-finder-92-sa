@@ -7,14 +7,14 @@
 #include <chrono>
 #include <functional>
 
-// Conecta el navegador con el juego: abrir y cerrar, entrada, controles, menú de pausa y dibujo.
+// Connects the browser to the game: opening and closing, input, controls, pause menu and drawing.
 class BrowserOverlay {
 public:
 	void InstallWindowHook();
 
 	void SetPad(const PadInput& pad) { pad_ = &pad; }
 	void SetToggleKey(unsigned int key) { toggleKey_ = key; }
-	// Recibe (tecla, es una repetición) y devuelve true si la tecla ya no debe llegar a nadie más.
+	// Takes (key, is a repeat) and returns true if the key must not reach anything else.
 	void SetKeyFilter(std::function<bool(unsigned int, bool)> filter) { keyFilter_ = std::move(filter); }
 	void RemoveWindowHook();
 
@@ -25,7 +25,7 @@ public:
 	void OnDeviceReset();
 	void Shutdown();
 
-	// El juego no debe recentrar el cursor mientras el navegador lo usa.
+	// The game must not recenter the cursor while the browser is using it.
 	bool UsesCursor() const;
 	bool IsOpen() const { return phase_ != Phase::Closed; }
 	bool KeyboardOpen() const { return client_.KeyboardOpen(); }
@@ -37,7 +37,7 @@ public:
 	void PublishGameState(const ef::GameStateData& state) { client_.PublishGameState(state); }
 
 private:
-	// Cerrado -> fundido a negro del juego -> abierto -> fundido a negro del navegador -> cerrado.
+	// Closed -> game fades to black -> open -> browser fades to black -> closed.
 	enum class Phase { Closed, FadingGameOut, Open, FadingBrowserOut };
 
 	static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -81,7 +81,7 @@ private:
 	int unreadMail_ = 0;
 
 	const PadInput* pad_ = nullptr;
-	uint32_t padIgnored_ = 0;  // Botones que ya estaban pulsados al llegar: no cuentan hasta soltarlos.
+	uint32_t padIgnored_ = 0;  // Buttons already held on arrival: they don't count until released.
 	std::chrono::steady_clock::time_point padLastUpdate_{};
 	float padCursorCarryX_ = 0.0f;
 	float padCursorCarryY_ = 0.0f;
@@ -92,7 +92,7 @@ private:
 	uint32_t padKeyboardHeld_ = 0;
 	DWORD padKeyboardRepeatAt_[12] = {};
 
-	// Estadísticas del prototipo.
+	// Prototype statistics.
 	DWORD statsStart_ = 0;
 	uint32_t statsPaintsStart_ = 0;
 	uint32_t statsUploads_ = 0;

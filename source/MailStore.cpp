@@ -15,7 +15,7 @@ constexpr int kFileVersion = 1;
 constexpr size_t kMaxMails = 200;
 constexpr size_t kMaxPagerEntries = 10;
 
-// Escribe a un temporal y lo sustituye, para que nadie lea nunca un archivo a medias.
+// Writes to a temporary file and swaps it in, so that nobody ever reads a half-written file.
 bool WriteAtomically(const std::filesystem::path& path, const std::string& text) {
 	std::error_code error;
 	std::filesystem::create_directories(path.parent_path(), error);
@@ -54,9 +54,9 @@ std::string Serialize(const std::vector<Mail>& mails, uint32_t nextId, const std
 		list.push_back(std::move(item));
 	}
 
-	// Un objeto por sistema: otras funciones del mod podrán guardar sus datos aquí.
+	// One object per system: other mod features can store their data here.
 	const json root = { { "version", kFileVersion }, { "mail", { { "nextId", nextId }, { "mails", list }, { "replies", replies } } }, { "values", values }, { "pager", pager } };
-	// Otro mod puede mandar UTF-8 no válido: se sustituye en lugar de fallar.
+	// Another mod can send invalid UTF-8: it's replaced instead of failing.
 	return root.dump(1, '\t', false, json::error_handler_t::replace);
 }
 
@@ -80,7 +80,7 @@ uint32_t MailStore::Add(std::string from, std::string subject, std::string body,
 	mail.received = std::move(received);
 	mails_.push_back(std::move(mail));
 
-	// Si la bandeja se llena, se pierde lo más antiguo, y preferiblemente lo ya leído.
+	// If the inbox fills up, the oldest is lost, preferably something already read.
 	if (mails_.size() > kMaxMails) {
 		auto oldest = std::find_if(mails_.begin(), mails_.end(), [](const Mail& item) { return item.read; });
 		mails_.erase(oldest != mails_.end() ? oldest : mails_.begin());

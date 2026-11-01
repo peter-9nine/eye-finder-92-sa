@@ -1,4 +1,4 @@
-# Copia el plugin y el helper a modloader. Se niega a hacerlo con el juego abierto.
+# Copies the plugin and helper to modloader. It refuses while the game is running.
 param([string]$Configuration = 'Release', [switch]$Demo)
 
 $ErrorActionPreference = 'Stop'
@@ -13,15 +13,15 @@ New-Item -ItemType Directory -Force -Path $browser | Out-Null
 
 Copy-Item "$root\bin\GTASA\$Configuration\EyeFinder92SA.asi" $target -Force
 
-# /MIR deja la carpeta igual que la compilación. Robocopy devuelve menos de 8 si todo ha ido bien.
+# /MIR leaves the folder identical to the build. Robocopy returns less than 8 if all went well.
 robocopy "$root\helper\build\Release" $browser /MIR /NFL /NDL /NJH /NJS /NP /XF '*.pdb' '*.lib' '*.exp' '*.ilk' | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 
-# El contenido público de ejemplo se añade sin borrar nada: esas carpetas son de quien las use.
+# The public example content is added without deleting anything, because those folders belong to whoever uses them.
 robocopy "$root\public" $target /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 
-# El mod de ejemplo de la API solo se instala si se pide. -Demo:$false no lo quita.
+# The API example mod is only installed on request. -Demo:$false doesn't remove it.
 if ($Demo) { Copy-Item "$root\tools\harness\build\Release\EyeFinderApiDemo.asi", "$root\examples\ApiDemo\values_test.efs" $target -Force }
 
 $size = (Get-ChildItem $target -Recurse -File | Measure-Object Length -Sum).Sum / 1MB

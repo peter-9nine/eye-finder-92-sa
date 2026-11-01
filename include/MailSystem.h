@@ -7,7 +7,7 @@
 
 #include <deque>
 
-// Recibe lo que envían otros mods, lleva la bandeja de la partida en curso y muestra los avisos.
+// Receives what other mods send, keeps the current game's inbox and shows the notifications.
 class MailSystem {
 public:
 	void Initialize(BrowserOverlay& overlay, const PadInput& pad);
@@ -15,7 +15,7 @@ public:
 	void Update();
 	void Draw();
 
-	// Partidas: el juego acaba de empezar, guardar o cargar una.
+	// Saved games: the game has just started, saved or loaded one.
 	void OnNewGame();
 	void OnGameSaved();
 	void OnGameLoaded();
@@ -54,8 +54,8 @@ private:
 	std::deque<PagerMessage> pages_;
 	KeyConfig keys_;
 	bool memoryOpen_ = false;
-	size_t memoryIndex_ = 0;  // 0 es el mensaje más reciente.
-	DWORD padHoldStart_ = 0;  // Cuándo se empezó a mantener el botón del busca; 0 si no cuenta.
+	size_t memoryIndex_ = 0;  // 0 is the latest message.
+	DWORD padHoldStart_ = 0;  // When the pager button started being held, or 0 if it doesn't count.
 	DWORD lastDraw_ = 0;
 	DWORD lastTextShown_ = 0;
 	DWORD lastStatePublished_ = 0;

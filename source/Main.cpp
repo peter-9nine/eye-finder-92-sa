@@ -13,12 +13,12 @@ MailSystem gMail;
 PadInput gPad;
 safetyhook::InlineHook gMouseSetPos;
 
-// Se engancha la llamada y no la función, para encadenar lo que hubiera si otro mod ya la cambió.
-// Es lo que usan por dentro los eventos del SDK, pero estos no dan el valor devuelto, y hace falta.
+// Hooks the call, not the function, to chain whatever was there if another mod already changed it.
+// SDK events are built on this, but they don't provide the return value, which is needed here.
 using GenericSaveCall = injector::function_hooker<injector::scoped_call, 0x00619081, char(int)>;
 using GenericLoadCall = injector::function_hooker<injector::scoped_call, 0x0053C70B, char(bool*)>;
 
-// El juego recentra el cursor en cada fotograma; con el navegador abierto hay que impedirlo.
+// The game recenters the cursor every frame, which must be stopped while the browser is open.
 void __cdecl HookMouseSetPos(RwV2d* position) {
 	if (gOverlay.UsesCursor()) return;
 	gMouseSetPos.original<int(__cdecl*)(RwV2d*)>()(position);
@@ -31,7 +31,7 @@ struct Main {
 		Log("EyeFinder92SA loaded");
 		gMouseSetPos = safetyhook::create_inline(reinterpret_cast<void*>(0x007453F0), HookMouseSetPos);
 
-		// Cada partida guardada tiene su archivo del mod. Solo se escribe si el juego ha guardado de verdad.
+		// Each saved game has its own mod file. It's only written if the game really saved.
 		injector::make_static_hook<GenericSaveCall>([](GenericSaveCall::func_type original, int unused) {
 			const char saved = original(unused);
 			if (saved) gMail.OnGameSaved();
@@ -54,12 +54,12 @@ struct Main {
 			gOverlay.Update();
 			gMail.Update();
 		};
-		// El busca va después, para verse también sobre el navegador.
+		// The pager goes after, so that it also shows over the browser.
 		Events::drawAfterFadeEvent += [] {
 			gOverlay.Draw();
 			gMail.Draw();
 		};
-		// Se dispara al empezar y antes de cargar: si es una carga, OnGameLoaded trae luego los correos.
+		// Fires on starting and before loading: if it's a load, OnGameLoaded brings the mail afterwards.
 		Events::restartGameEvent += [] {
 			gOverlay.Restart();
 			gMail.OnNewGame();

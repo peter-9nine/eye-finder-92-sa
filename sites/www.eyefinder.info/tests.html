@@ -47,12 +47,12 @@ let clicks = 0;
     byId('cleoResult').textContent = (await sa.runScript('hello')) ? 'Sent to the game' : 'Refused';
   };
 
-  // Debe fallar: otro origen no puede leer el correo, ni siquiera con la cabecera.
+  // This must fail: another origin can't read the mail, not even with the header.
   fetch('https://mail.eyefinder.info/api/inbox', { headers: { 'X-EyeFinder': '1' } })
     .then(() => { byId('crossSite').textContent = 'ALLOWED (BAD)'; })
     .catch(() => { byId('crossSite').textContent = 'blocked'; });
 
-  // Mide si esta página llega de verdad a internet: en modo local, ambos deben salir "blocked".
+  // Measures whether this page really reaches the internet: in local mode, both must say "blocked".
   fetch('https://example.com/', { mode: 'no-cors', cache: 'no-store' })
     .then(() => { byId('netFetch').textContent = 'reached'; })
     .catch(() => { byId('netFetch').textContent = 'blocked'; });
@@ -65,7 +65,7 @@ let clicks = 0;
     byId('netSocket').textContent = 'blocked';
   }
 
-  // WebRTC llega a internet si un servidor STUN le devuelve su dirección pública (srflx).
+  // WebRTC reaches the internet if a STUN server returns its public address (srflx).
   const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
   peer.createDataChannel('test');
   byId('netRtc').textContent = 'blocked';
@@ -74,7 +74,7 @@ let clicks = 0;
   };
   peer.createOffer().then((offer) => peer.setLocalDescription(offer));
 
-  // Lo que documenta la FAQ para quienes crean sitios.
+  // What the FAQ documents for people making sites.
   const probe = document.createElement('video');
   const formats = { WebM: 'video/webm; codecs="vp9,opus"', Ogg: 'audio/ogg; codecs="opus"', MP3: 'audio/mpeg', 'H.264': 'video/mp4; codecs="avc1.42E01E"', AAC: 'audio/mp4; codecs="mp4a.40.2"' };
   byId('media').textContent = 'Media: ' + Object.entries(formats).map(([name, type]) => name + '=' + (probe.canPlayType(type) || 'no')).join(', ');
@@ -95,7 +95,7 @@ let clicks = 0;
     byId('fillers').appendChild(row);
   }
 
-  // Solo se anima con ?animate o al pulsar A, para medir el peor caso a voluntad.
+  // Only animates with ?animate or on pressing A, to measure the worst case at will.
   let animating = location.search.includes('animate');
   let frames = 0;
   let windowStart = performance.now();

@@ -1,5 +1,5 @@
 #pragma once
-// Lanza el helper y habla con él. No depende del juego, así que el arnés también lo usa.
+// Starts the helper and talks to it. It doesn't depend on the game, so the harness uses it too.
 #include <cstdint>
 #include <string>
 #include <windows.h>
@@ -18,7 +18,7 @@ public:
 	bool IsReady() const;
 	void Send(const ef::Event& event);
 
-	// Devuelve el fotograma más reciente si hay uno nuevo. Sigue siendo válido hasta la siguiente llamada.
+	// Returns the latest frame if there's a new one. It stays valid until the next call.
 	const uint8_t* AcquireFrame();
 
 	uint32_t Width() const { return header_ ? header_->width : 0; }

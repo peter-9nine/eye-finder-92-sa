@@ -3,7 +3,7 @@
 
 class IGInputPad;
 
-// Los botones del mando que usa el mod, cada uno con su campo de CControllerState.
+// The pad buttons the mod uses, each with its CControllerState field.
 enum PadButton : uint32_t {
 	kPadDPadUp = 1u << 0,
 	kPadDPadDown = 1u << 1,
@@ -19,15 +19,15 @@ enum PadButton : uint32_t {
 	kPadLeftThumb = 1u << 11,
 };
 
-// El mando. GInput solo dice si el jugador lo está usando, y el estado se lee de CPad::GetPad(0).
-// Hay que preguntárselo a GInput porque el ratón también llena esos campos: un clic llegaría como un botón.
+// The pad. GInput only says whether the player is using it, and its state is read from CPad::GetPad(0).
+// GInput has to be asked because the mouse also fills those fields, so a click could arrive as a button.
 class PadInput {
 public:
-	// No se puede llamar desde DllMain: GInput podría no estar listo.
+	// Can't be called from DllMain: GInput might not be ready.
 	void Initialize();
 	void Shutdown();
 
-	// Una vez por fotograma, antes que quien lo use.
+	// Once per frame, before anything that uses it.
 	void Update();
 
 	uint32_t Held() const { return held_; }
@@ -35,7 +35,7 @@ public:
 	bool Pressed(PadButton button) const { return (held_ & button) && !(previous_ & button); }
 	bool Released(PadButton button) const { return !(held_ & button) && (previous_ & button); }
 
-	// De -1 a 1. Positivo es derecha y arriba.
+	// From -1 to 1. Positive is right and up.
 	float LeftX() const { return leftX_; }
 	float LeftY() const { return leftY_; }
 	float RightX() const { return rightX_; }

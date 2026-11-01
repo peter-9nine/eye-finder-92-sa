@@ -29,7 +29,7 @@ const D3DCOLOR kLedOn = D3DCOLOR_XRGB(255, 50, 40);
 const D3DCOLOR kLedOff = D3DCOLOR_XRGB(70, 18, 16);
 const D3DCOLOR kButtonColor = D3DCOLOR_XRGB(96, 96, 104);
 
-// Fuente clásica de 5x7, ASCII 32 a 95. Cada byte es una columna, con el bit bajo arriba.
+// Classic 5x7 font, ASCII 32 to 95. Each byte is a column, with the low bit at the top.
 const uint8_t kFont[64][5] = {
 	{ 0x00, 0x00, 0x00, 0x00, 0x00 }, { 0x00, 0x00, 0x5F, 0x00, 0x00 }, { 0x00, 0x07, 0x00, 0x07, 0x00 }, { 0x14, 0x7F, 0x14, 0x7F, 0x14 },
 	{ 0x24, 0x2A, 0x7F, 0x2A, 0x12 }, { 0x23, 0x13, 0x08, 0x64, 0x62 }, { 0x36, 0x49, 0x55, 0x22, 0x50 }, { 0x00, 0x05, 0x03, 0x00, 0x00 },
@@ -54,7 +54,7 @@ struct Vertex {
 	D3DCOLOR color;
 };
 
-// Todo se acumula y se dibuja de una vez: son miles de puntos.
+// Everything is collected and drawn at once, because there are thousands of dots.
 class Batch {
 public:
 	void Rect(float left, float top, float right, float bottom, D3DCOLOR color) {
@@ -65,7 +65,7 @@ public:
 		vertices_.insert(vertices_.end(), { a, b, c, b, d, c });
 	}
 
-	// Rectángulo con las esquinas recortadas, para no parecer una caja.
+	// A rectangle with clipped corners, so that it doesn't look like a box.
 	void Rounded(float left, float top, float right, float bottom, float cut, D3DCOLOR color) {
 		Rect(left + cut, top, right - cut, bottom, color);
 		Rect(left, top + cut, left + cut, bottom - cut, color);
@@ -84,7 +84,7 @@ public:
 				for (int column = 0; column < 5; ++column) {
 					for (int row = 0; row < 7; ++row) {
 						if (kFont[index][column] & (1 << row)) {
-							// Un hueco entre puntos: es lo que hace que parezca una pantalla LCD.
+							// A gap between dots: that's what makes it look like an LCD screen.
 							const float gap = dot >= 4.0f ? 1.0f : 0.0f;
 							const float dotX = x + column * dot;
 							const float dotY = y + row * dot;
@@ -126,7 +126,7 @@ std::vector<std::string> WrapWords(const std::string& text, size_t width) {
 		const bool newline = end < text.size() && text[end] == '\n';
 		position = end + 1;
 
-		// Una palabra más larga que la pantalla se parte.
+		// A word longer than the screen gets split.
 		while (word.size() > width) {
 			if (!row.empty()) {
 				rows.push_back(row);
@@ -178,7 +178,7 @@ std::vector<uint8_t> BuildBeepWave() {
 	std::memcpy(wave.data() + 36, "data", 4);
 	put32(40, kSamples);
 
-	// Onda cuadrada a poco volumen: un altavoz diminuto.
+	// A quiet square wave: a tiny speaker.
 	for (uint32_t sample = 0; sample < kSamples; ++sample) {
 		if (sample % (kOnSamples + kOffSamples) < kOnSamples) {
 			wave[44 + sample] = (sample % kPeriod) < kPeriod / 2 ? 158 : 98;
@@ -203,17 +203,17 @@ std::string ToPlainAscii(const std::string& utf8) {
 			result += ' ';
 		}
 		else if (byte < 0x80) {
-			// "~" empieza los códigos de formato del juego: otro mod no debe poder usarlos sin querer.
+			// "~" starts the game's format codes: another mod must not be able to use them by accident.
 			if (byte >= 0x20 && byte != '~') result += static_cast<char>(byte);
 		}
 		else if ((byte == 0xC3) && i + 1 < utf8.size()) {
-			// Letras latinas con acento: se quita el acento.
+			// Accented Latin letters: the accent is removed.
 			static const char kLatin[] = "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
 			const auto next = static_cast<unsigned char>(utf8[++i]);
 			result += (next >= 0x80 && next < 0xC0) ? kLatin[next - 0x80] : '?';
 		}
 		else {
-			// Cualquier otro carácter se convierte en un solo "?".
+			// Any other character becomes a single "?".
 			int extra = byte >= 0xF0 ? 3 : byte >= 0xE0 ? 2 : byte >= 0xC0 ? 1 : 0;
 			while (extra-- > 0 && i + 1 < utf8.size()) ++i;
 			result += '?';
@@ -261,7 +261,7 @@ void PagerRenderer::Advance(unsigned int milliseconds) {
 void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float screenHeight) {
 	if (!busy_) return;
 
-	// Puntos enteros para que el texto salga nítido a cualquier resolución.
+	// Whole dots, so that the text stays sharp at any resolution.
 	const float dot = (std::max)(2.0f, std::floor(screenHeight / 240.0f));
 	const float unit = dot / 3.0f;
 
@@ -274,7 +274,7 @@ void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float scre
 	const float width = screenWide + 28.0f * unit;
 	const float height = screenTall + 58.0f * unit;
 
-	// Sube desde abajo, se queda y vuelve a bajar. El radar está a la izquierda.
+	// Rises from below, stays and goes back down. The radar is on the left.
 	float visibility = 1.0f;
 	if (elapsed_ < kSlideMs) visibility = float(elapsed_) / kSlideMs;
 	else if (elapsed_ > kSlideMs + holdTime_) visibility = 1.0f - float(elapsed_ - kSlideMs - holdTime_) / kSlideMs;
@@ -284,7 +284,7 @@ void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float scre
 	float x = std::floor(screenWidth - width - margin);
 	const float y = std::floor(screenHeight - (height + margin) * visibility);
 
-	// Vibra al recibir, como en el cinturón.
+	// Vibrates on receiving, as it would on a belt.
 	if (isNew_ && elapsed_ > kSlideMs && elapsed_ < kSlideMs + kVibrateMs) {
 		x += ((elapsed_ / 30) % 2 == 0) ? 2.0f * unit : -2.0f * unit;
 	}
@@ -296,20 +296,20 @@ void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float scre
 	batch.Rounded(x, y, x + width, y + height, cut, kBodyLight);
 	batch.Rounded(x + 2 * unit, y + 3 * unit, x + width - unit, y + height - unit, cut, kBodyColor);
 
-	// Marca y luz de aviso.
+	// Brand and alert light.
 	batch.Text("WHIZ", x + 16 * unit, y + 11 * unit, (std::max)(1.0f, std::floor(dot * 0.67f)), kBrandColor);
 	const bool ledOn = isNew_ && (elapsed_ / 350) % 2 == 0;
 	const float ledRight = x + width - 16 * unit;
 	batch.Rounded(ledRight - 14 * unit, y + 12 * unit, ledRight, y + 22 * unit, 3 * unit, ledOn ? kLedOn : kLedOff);
 
-	// De qué mensaje de la memoria se trata.
+	// Which message in the memory this is.
 	if (!label_.empty()) {
 		const float labelDot = (std::max)(1.0f, std::floor(dot * 0.67f));
 		const float labelWidth = label_.size() * 6.0f * labelDot;
 		batch.Text(label_, std::floor(ledRight - 24 * unit - labelWidth), y + 11 * unit, labelDot, kBrandColor);
 	}
 
-	// Pantalla
+	// Screen
 	const float screenLeft = x + 14 * unit;
 	const float screenTop = y + 30 * unit;
 	batch.Rect(screenLeft - 3 * unit, screenTop - 3 * unit, screenLeft + screenWide + 3 * unit, screenTop + screenTall + 3 * unit, kScreenBezel);
@@ -328,14 +328,14 @@ void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float scre
 		}
 	}
 
-	// Botones
+	// Buttons
 	const float buttonTop = screenTop + screenTall + 10 * unit;
 	for (int button = 0; button < 3; ++button) {
 		const float left = x + width * 0.5f + (button - 1.5f) * 44.0f * unit + 2.0f * unit;
 		batch.Rounded(left, buttonTop, left + 40 * unit, buttonTop + 9 * unit, 3 * unit, kButtonColor);
 	}
 
-	// RenderWare guarda su propia copia del estado, así que hay que dejarlo todo como estaba.
+	// RenderWare keeps its own copy of the state, so everything must be left as it was.
 	IDirect3DStateBlock9* saved = nullptr;
 	if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved))) return;
 
@@ -367,7 +367,7 @@ void PagerRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float scre
 }
 
 void PagerRenderer::PlayBeep() {
-	// Windows sigue leyendo este búfer mientras suena, así que debe durar para siempre.
+	// Windows keeps reading this buffer while it plays, so it must last forever.
 	static const std::vector<uint8_t> wave = BuildBeepWave();
 	PlaySoundA(reinterpret_cast<LPCSTR>(wave.data()), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
 }

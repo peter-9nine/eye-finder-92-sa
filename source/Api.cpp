@@ -1,4 +1,4 @@
-// La API pública para otros mods: ver api/EyeFinderApi.h.
+// The public API for other mods: see api/EyeFinderApi.h.
 #include "ApiQueue.h"
 
 #include <atomic>
@@ -40,7 +40,7 @@ int Enqueue(api::Request&& request) {
 		return 1;
 	}
 	catch (...) {
-		// Un fallo aquí nunca debe llegar al mod que nos llama.
+		// A failure here must never reach the mod calling us.
 		return 0;
 	}
 }
@@ -153,7 +153,7 @@ EF_EXPORT int __cdecl EF_SendEmailWithReplies(const char* from, const char* subj
 		request.goodScript = Copy(goodScript, kMaxPathLength);
 		request.badScript = Copy(badScript, kMaxPathLength);
 
-		// Sin clave ni los dos textos no se puede responder.
+		// Without a key and both texts, it can't be answered.
 		if (request.replyKey.empty() || request.goodText.empty() || request.badText.empty()) return 0;
 		return Enqueue(std::move(request));
 	}
@@ -249,7 +249,7 @@ EF_EXPORT int __cdecl EF_GetUnreadCount() {
 }
 
 #ifdef EF_API_TEST
-// Solo en el doble de pruebas del arnés.
+// Only in the harness's test double.
 EF_EXPORT int __cdecl EF_Test_PendingCount() {
 	std::lock_guard lock(gMutex);
 	return static_cast<int>(gPending.size());

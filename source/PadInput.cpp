@@ -7,10 +7,10 @@
 
 namespace {
 
-// GInput ya aplica la zona muerta del jugador: esto solo evita que el cursor se mueva por un resto mínimo.
+// GInput already applies the player's deadzone: this only stops the cursor drifting on a tiny remainder.
 constexpr float kStickDeadzone = 0.08f;
 
-// En CPad, los ejes van de -128 a 127 y arriba es negativo.
+// In CPad, the axes go from -128 to 127 and up is negative.
 void ReadStick(short rawX, short rawY, float& x, float& y) {
 	const float fx = std::clamp(rawX / 128.0f, -1.0f, 1.0f);
 	const float fy = std::clamp(-rawY / 128.0f, -1.0f, 1.0f);
@@ -20,7 +20,7 @@ void ReadStick(short rawX, short rawY, float& x, float& y) {
 		return;
 	}
 
-	// Sin saltos al salir de la zona muerta.
+	// No jump on leaving the deadzone.
 	const float scaled = (std::min)((length - kStickDeadzone) / (1.0f - kStickDeadzone), 1.0f);
 	x = fx / length * scaled;
 	y = fy / length * scaled;
@@ -55,7 +55,7 @@ void PadInput::Update() {
 
 	if (!ginput_ || !ginput_->HasPadInHands()) return;
 
-	// El juego actualiza NewState aunque los controles del jugador estén desactivados.
+	// The game updates NewState even with the player's controls disabled.
 	const CControllerState& state = CPad::GetPad(0)->NewState;
 
 	if (state.DPadUp) held_ |= kPadDPadUp;

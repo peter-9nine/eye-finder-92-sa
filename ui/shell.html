@@ -16,7 +16,7 @@
   html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; cursor: default; }
   body { font: 14px var(--ui-font); color: #000; background: #037575; }
 
-  /* Escritorio: el arte original, con las zonas clicables encima. */
+  /* Desktop: the original art, with the clickable areas on top. */
   #desktop { position: fixed; inset: 0; background: url("img/desktop.png") center / 100% 100% no-repeat; }
   .icon { position: absolute; background: none; border: 0; padding: 0; cursor: pointer; outline: 0; }
   .icon:hover, .icon:focus-visible { outline: 2px dotted #fff; outline-offset: 2px; }
@@ -34,11 +34,11 @@
 
   #hopesNote { position: absolute; left: 1.6%; top: 19.5%; padding: 4px 8px; background: #ffffcc; border: 1px solid #000; font-size: 13px; display: none; }
 
-  /* Ventana minimizada: un icono abajo, como en los escritorios de la época. */
+  /* Minimized window: an icon at the bottom, like desktops of the time. */
   #minimized { position: absolute; left: 12px; bottom: 10px; width: 96px; padding: 4px; background: none; border: 0; color: #fff; font: 13px var(--ui-font); text-align: center; cursor: pointer; display: none; }
   #minimized .globe { display: block; width: 36px; height: 36px; margin: 0 auto 4px; background: var(--grey); border: 2px outset #fff; line-height: 30px; color: #000; font-weight: bold; }
 
-  /* Ventana del navegador */
+  /* Browser window */
   #window { position: fixed; top: 0; bottom: 0; left: 50%; width: min(100vw, calc(100vh * 4 / 3)); transform: translateX(-50%); display: none; flex-direction: column; background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
   #window.maximized { left: 0; width: 100vw; transform: none; }
 
@@ -57,7 +57,7 @@
   #netMode { width: 88px !important; font-size: 12px !important; font-weight: bold; }
   #netMode.internet { background: #c00000; color: #fff; text-shadow: none; }
 
-  /* Aviso de la época. Mientras está abierto, la pestaña se oculta: se compone por encima de la interfaz. */
+  /* A period warning. While it's open the tab is hidden, because it's composited over the interface. */
   #alertShade { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
   #alertBox { width: 560px; max-width: calc(100vw - 32px); background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
   #alertTitle { height: 26px; line-height: 26px; padding: 0 10px; color: #fff; background: linear-gradient(90deg, #800000, #d04010); font: bold 15px var(--title-font); }
@@ -75,14 +75,14 @@
   .tabClose { flex: none; width: 17px; height: 17px; margin-left: 4px; font-size: 11px; line-height: 11px; }
   #newTab { flex: none; width: 26px; height: 22px; margin-bottom: 1px; font-weight: bold; }
 
-  /* Hueco donde el helper compone la pestaña activa. */
+  /* The space where the helper composites the active tab. */
   #content { flex: 1; min-height: 0; margin: 0 6px; background: #fff; border: 0; }
   #statusBar { flex: none; height: 26px; display: flex; align-items: center; gap: 3px; padding: 0 2px 0 8px; margin: 2px 6px 2px; border: 1px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font-size: 13px; }
   #statusText { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #statusBar .bevel { height: 20px; min-width: 22px; font-size: 13px; line-height: 12px; }
   #zoomValue { width: 48px; }
 
-  /* Teclado en pantalla para el mando. El helper compone su rectángulo sobre la pestaña. */
+  /* On-screen keyboard for the pad. The helper composites its rectangle over the tab. */
   #keyboard { position: fixed; bottom: 0; left: 50%; width: min(100vw, calc(100vh * 4 / 3)); transform: translateX(-50%); display: none; flex-direction: column; gap: 0.8vh; padding-bottom: 0.8vh; background: var(--grey); border: 2px solid; border-color: var(--light) var(--darker) var(--darker) var(--light); }
   #kbTitle { flex: none; height: 3.6vh; line-height: 3.6vh; padding: 0 10px; color: #fff; background: linear-gradient(90deg, #000080, #1084d0); font: bold 2.1vh/3.6vh var(--title-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #kbText { flex: none; display: block; width: calc(100% - 16px); margin: 0 8px; padding: 0.6vh 8px; height: 5.4vh; resize: none; background: #fff; border: 2px solid; border-color: var(--dark) var(--light) var(--light) var(--dark); font: 2.8vh var(--ui-font); outline: 0; overflow: hidden; white-space: pre; user-select: text; }
@@ -189,9 +189,9 @@
   let tabs = [];
   let activeId = -1;
   let nextId = 1;
-  let windowState = 'closed';  // closed, open o minimized
+  let windowState = 'closed';  // closed, open or minimized
   let internet = false;
-  let pendingInternet = null;  // { url, newTab } mientras el aviso está abierto
+  let pendingInternet = null;  // { url, newTab } while the warning is open
 
   const activeTab = () => tabs.find((tab) => tab.id === activeId);
 
@@ -250,7 +250,7 @@
 
   const displayUrl = (url) => (url || '').replace(/^data:.*/, '');
 
-  // El correo se abre una sola vez: si ya hay una pestaña, se vuelve a ella.
+  // Mail only opens once: if there's already a tab, go back to it.
   function openMail() {
     const existing = tabs.find((tab) => (tab.url || '').startsWith(MAIL));
     if (!existing) {
@@ -301,7 +301,7 @@
     activateTab(tabs[(index + step + tabs.length) % tabs.length].id);
   }
 
-  // Una dirección, o si no lo parece, una búsqueda.
+  // An address or, if it doesn't look like one, a search.
   function toUrl(text) {
     const value = text.trim();
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
@@ -318,7 +318,7 @@
     else openTab(url);
   }
 
-  // Siempre se pregunta: no hay "no volver a preguntar".
+  // It always asks: there's no "don't ask again".
   function askForInternet(url, newTab) {
     closeKeyboard(false);
     pendingInternet = { url, newTab };
@@ -346,8 +346,8 @@
     byId('netMode').title = enabled ? 'Connected to the real internet. Click to go back to local sites only.' : 'Local sites only. Click to connect to the real internet.';
   }
 
-  // --- Teclado en pantalla ---
-  // El texto se edita aquí, y la casilla no cambia hasta pulsar Go.
+  // --- On-screen keyboard ---
+  // The text is edited here, and the field doesn't change until Go.
   const kbKey = (action, label, span = 1, style = 'special') => ({ action, label, span, style });
   const kbChars = (text) => [...text].map((char) => ({ char, span: 1 }));
   const KB_NUMBERS = [...kbChars('1234567890'), kbKey('backspace', '⌫ Delete', 2)];
@@ -401,7 +401,7 @@
           (key.action === 'shift' && keyboard.shift ? ' latched' : '');
         button.textContent = key.char ? (isLetter ? key.char.toUpperCase() : key.char) : key.label;
         button.style.flexGrow = key.span;
-        // El ratón también sirve, sin quitarle el foco al texto.
+        // The mouse works too, without taking focus from the text.
         button.onmousedown = (event) => event.preventDefault();
         button.onclick = () => {
           keyboard.row = rowIndex;
@@ -428,7 +428,7 @@
       kbText.setRangeText('', start, end, 'end');
     }
     else if (start > 0) {
-      // Una letra fuera del plano básico son dos unidades de UTF-16.
+      // A character outside the basic plane is two UTF-16 units.
       const low = value.charCodeAt(start - 1);
       const pair = start > 1 && low >= 0xDC00 && low <= 0xDFFF;
       kbText.setRangeText('', start - (pair ? 2 : 1), start, 'end');
@@ -467,13 +467,13 @@
     renderKeyboard();
   }
 
-  // Cambiar el texto desde código no desplaza la casilla: volver a darle el foco la lleva hasta el cursor.
+  // Changing the text from code doesn't scroll the field, but focusing it again brings it to the caret.
   function showCaret() {
     kbText.blur();
     kbText.focus();
   }
 
-  // Arriba y abajo van a la tecla más cercana: las filas no tienen las mismas columnas.
+  // Up and down go to the nearest key, because the rows don't have the same columns.
   function moveSelection(rows, cols) {
     const count = keyboard.keys.length;
     if (cols) {
@@ -512,7 +512,7 @@
 
     byId('keyboard').style.display = 'flex';
     renderKeyboard();
-    // Una dirección se suele cambiar entera. En lo demás, se sigue escribiendo al final.
+    // An address is usually replaced whole. Anywhere else, typing continues at the end.
     if (keyboard.target === 'address') kbText.select();
     else kbText.setSelectionRange(kbText.value.length, kbText.value.length);
     showCaret();
@@ -552,11 +552,11 @@
     }
   });
 
-  // --- Llamadas desde el helper ---
+  // --- Calls from the helper ---
   window.ef = {
     keyboardOpen: openKeyboard,
     keyboardCancel() { closeKeyboard(false); },
-    // La barra de direcciones es la única casilla de la interfaz.
+    // The address bar is the interface's only field.
     padClicked() {
       if (document.activeElement === byId('address')) {
         openKeyboard({ target: 'address', type: 'url', text: byId('address').value, label: 'Web address' });
@@ -599,7 +599,7 @@
     },
   };
 
-  // --- Escritorio ---
+  // --- Desktop ---
   byId('iconInternet').onclick = () => {
     if (tabs.length) setWindowState('open');
     else openTab(HOME);
@@ -614,7 +614,7 @@
   };
   byId('minimized').onclick = () => setWindowState('open');
 
-  // --- Ventana ---
+  // --- Window ---
   byId('minimize').onclick = () => setWindowState('minimized');
   byId('close').onclick = () => {
     for (const tab of [...tabs]) closeTab(tab.id);

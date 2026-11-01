@@ -21,13 +21,13 @@ std::wstring SaveDataDirectory() {
 	return PluginDirectory() + L"\\save data";
 }
 
-// La partida en curso. Solo pasa a un archivo de partida cuando el jugador guarda.
+// The game being played. It only goes into a save's file when the player saves.
 std::wstring SessionSavePath() {
 	return SaveDataDirectory() + L"\\current session.json";
 }
 
 std::wstring FileUrl(const std::wstring& path) {
-	// UTF-8 con escapes: la misma forma en que Chromium devuelve la URL, para poder compararla.
+	// Escaped UTF-8: the same form Chromium returns the URL in, so that they can be compared.
 	const int size = WideCharToMultiByte(CP_UTF8, 0, path.c_str(), -1, nullptr, 0, nullptr, nullptr);
 	std::string utf8(size > 0 ? size - 1 : 0, '\0');
 	if (size > 1) WideCharToMultiByte(CP_UTF8, 0, path.c_str(), -1, utf8.data(), size, nullptr, nullptr);

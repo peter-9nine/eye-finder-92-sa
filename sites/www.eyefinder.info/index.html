@@ -105,7 +105,7 @@
       return slot;
     }
 
-    // Un orden nuevo en cada visita, con anuncios entre los sitios.
+    // A new order on every visit, with ads between the sites.
     async function showDirectory() {
       const directory = document.getElementById('directory');
       const sites = sa.shuffle(await sa.sites());
@@ -118,7 +118,7 @@
 
       await sa.fillAds();
 
-      // Sin anuncios instalados, no se dejan huecos vacíos.
+      // With no ads installed, no empty gaps are left.
       for (const slot of directory.querySelectorAll('.adSlot:not([data-eyefinder-filled])')) slot.remove();
     }
 

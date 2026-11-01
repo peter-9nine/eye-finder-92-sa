@@ -1,6 +1,6 @@
 #pragma once
-// Protocolo de memoria compartida entre el plugin (32 bits) y el helper (64 bits).
-// Solo tipos de tamaño fijo: la disposición debe ser idéntica en ambas arquitecturas.
+// Shared memory protocol between the plugin (32-bit) and the helper (64-bit).
+// Fixed-size types only: the layout must be identical on both architectures.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -20,7 +20,7 @@ constexpr uint32_t kValueKeySize = 64;
 constexpr uint32_t kValueTextSize = 1024;
 constexpr uint32_t kHeaderSize = 64 * 1024;
 
-// Mismos valores que EVENTFLAG_* de CEF.
+// Same values as CEF's EVENTFLAG_*.
 constexpr uint32_t kModShift = 1u << 1;
 constexpr uint32_t kModControl = 1u << 2;
 constexpr uint32_t kModAlt = 1u << 3;
@@ -30,21 +30,21 @@ constexpr uint32_t kModRightMouse = 1u << 6;
 
 enum class EventType : uint32_t {
 	MouseMove,
-	MouseDown,   // a = botón (0 izquierdo, 1 central, 2 derecho), b = 1 si viene del mando
-	MouseUp,     // a = botón
+	MouseDown,   // a = button (0 left, 1 middle, 2 right), b = 1 if it came from the pad
+	MouseUp,     // a = button
 	Wheel,       // a = delta X, b = delta Y
 	KeyDown,     // a = virtual key, b = lParam
 	KeyUp,       // a = virtual key, b = lParam
-	Char,        // a = carácter UTF-16, b = lParam
+	Char,        // a = UTF-16 character, b = lParam
 	Show,
 	Hide,
-	Invalidate,  // pide repintar, por ejemplo tras perder el dispositivo D3D
-	MailChanged, // a = correos sin leer
+	Invalidate,  // asks for a repaint, for example after losing the D3D device
+	MailChanged, // a = unread emails
 	Quit,
 	PadKeyboard  // a = PadKeyboardAction
 };
 
-// Lo que el mando le pide al teclado en pantalla.
+// What the pad asks of the on-screen keyboard.
 enum class PadKeyboardAction : int32_t {
 	Up, Down, Left, Right, Press, Close, Backspace, Space, CaretLeft, CaretRight, Shift, Go
 };
@@ -59,7 +59,7 @@ struct Event {
 };
 static_assert(sizeof(Event) == 24);
 
-// Lo que hace el jugador en la bandeja. Los correos son del plugin: el helper solo los lee.
+// What the player does in the inbox. Emails belong to the plugin: the helper only reads them.
 enum class MailOpKind : uint32_t { MarkRead, Remove, ReplyGood, ReplyBad };
 
 struct MailOp {
@@ -68,13 +68,13 @@ struct MailOp {
 };
 static_assert(sizeof(MailOp) == 8);
 
-// Un valor que una página quiere guardar. Las claves y los textos son de los mods y las páginas.
+// A value a page wants to store. The keys and texts come from mods and pages.
 struct ValueOp {
 	char key[kValueKeySize];
 	char value[kValueTextSize];
 };
 
-// Lo que las páginas pueden saber del juego. El plugin lo publica varias veces por segundo.
+// What pages can know about the game. The plugin publishes it several times a second.
 struct GameStateData {
 	int32_t inGame;
 	int32_t money;
@@ -105,25 +105,25 @@ struct Header {
 	uint32_t height;
 	uint32_t stride;
 
-	// Triple búfer: el helper escribe en su slot y lo intercambia con "ready";
-	// el plugin hace lo mismo para leer. Nadie espera nunca a nadie.
+	// Triple buffer: the helper writes to its slot and swaps it with "ready",
+	// and the plugin does the same to read. Nobody ever waits for anybody.
 	std::atomic<uint32_t> ready;
 	std::atomic<uint32_t> state;
 	std::atomic<uint32_t> cursor;
 	std::atomic<uint32_t> paintCount;
-	std::atomic<uint32_t> closeRequest;  // La interfaz pide volver al juego (Log Off).
+	std::atomic<uint32_t> closeRequest;  // The interface asks to return to the game (Log Off).
 
-	// Cola de eventos con un solo productor (plugin) y un solo consumidor (helper).
+	// Event ring with a single producer (plugin) and a single consumer (helper).
 	std::atomic<uint32_t> ringWrite;
 	std::atomic<uint32_t> ringRead;
 	Event ring[kRingSize];
 
-	// La misma idea en sentido contrario: un solo productor (helper) y un solo consumidor (plugin).
+	// The same idea in reverse: a single producer (helper) and a single consumer (plugin).
 	std::atomic<uint32_t> mailOpWrite;
 	std::atomic<uint32_t> mailOpRead;
 	MailOp mailOps[kMailOpRingSize];
 
-	// Scripts de CLEO pedidos por un sitio local, como "dominio/nombre". El helper ya los ha comprobado.
+	// CLEO scripts requested by a local site, as "domain/name". The helper has already checked them.
 	std::atomic<uint32_t> siteScriptWrite;
 	std::atomic<uint32_t> siteScriptRead;
 	char siteScripts[kSiteScriptRingSize][kSiteScriptNameSize];
@@ -132,11 +132,11 @@ struct Header {
 	std::atomic<uint32_t> valueOpRead;
 	ValueOp valueOps[kValueOpRingSize];
 
-	// Se lee con un contador: impar mientras el plugin escribe, y si cambia, se vuelve a leer.
+	// Read with a counter: odd while the plugin writes, and if it changes, read it again.
 	std::atomic<uint32_t> gameStateSequence;
 	GameStateData gameState;
 
-	// El teclado en pantalla está abierto: el mando es suyo, no del cursor ni del busca.
+	// The on-screen keyboard is open: the pad belongs to it, not to the cursor or pager.
 	std::atomic<uint32_t> keyboardOpen;
 };
 static_assert(std::atomic<uint32_t>::is_always_lock_free);

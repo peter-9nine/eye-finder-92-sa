@@ -1,4 +1,4 @@
-# Descarga la versión fijada de CEF (64 bits, minimal) en third_party\cef y verifica su SHA-1.
+# Downloads the pinned version of CEF (64-bit, minimal) to third_party\cef and verifies its SHA-1.
 $ErrorActionPreference = 'Stop'
 
 $name = 'cef_binary_150.0.23+g4ccc4ca+chromium-150.0.7871.287_windows64_minimal'

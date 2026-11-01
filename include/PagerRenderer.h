@@ -1,19 +1,19 @@
 #pragma once
-// El busca de los 90: una pantalla de matriz de puntos dibujada con Direct3D 9.
-// No depende del juego, así que el arnés también la usa.
+// The 90s pager: a dot matrix screen drawn with Direct3D 9.
+// It doesn't depend on the game, so the harness uses it too.
 #include <d3d9.h>
 
 #include <string>
 #include <vector>
 
-// El juego y la pantalla del busca solo tienen ASCII: quita acentos y lo que no se pueda mostrar.
+// The game and the pager's screen only have ASCII: removes accents and whatever can't be shown.
 std::string ToPlainAscii(const std::string& utf8);
 
 class PagerRenderer {
 public:
 	void Show(const std::string& sender, const std::string& text);
 
-	// Desde la memoria: sin vibrar. Si ya está en pantalla, cambia de mensaje sin volver a subir.
+	// From the memory: no vibration. If it's already on screen, it changes message without rising again.
 	void ShowFromMemory(const std::string& sender, const std::string& text, const std::string& label);
 	void Close();
 	void Advance(unsigned int milliseconds);
@@ -21,7 +21,7 @@ public:
 
 	bool IsBusy() const { return busy_; }
 
-	// Tres pitidos, en un hilo de Windows para no detener el juego.
+	// Three beeps, on a Windows thread so as not to stop the game.
 	static void PlayBeep();
 
 private:

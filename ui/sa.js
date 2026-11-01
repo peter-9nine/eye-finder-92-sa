@@ -1,4 +1,4 @@
-// La biblioteca para las páginas locales. Se sirve como /_game/sa.js en todos los sitios locales.
+// The library for local pages. It's served as /_game/sa.js on every local site.
 (() => {
   const shuffle = (items) => {
     const list = [...items];
@@ -45,8 +45,8 @@
     return link;
   }
 
-  // Rellena cada elemento con data-eyefinder-ad. Un sitio nunca se anuncia a sí mismo, y no se
-  // repite un anuncio en la misma página mientras queden otros.
+  // Fills each element that has data-eyefinder-ad. A site never advertises itself, and an ad
+  // isn't repeated on the same page while others remain.
   async function fillAds(root = document) {
     const slots = [...root.querySelectorAll('[data-eyefinder-ad]:not([data-eyefinder-filled])')];
     if (slots.length === 0) return;
@@ -60,7 +60,7 @@
       const fits = kind ? available.filter((ad) => ad.kind === kind) : available;
       const pool = fits.length > 0 ? fits : available;
 
-      // Primero los que llevan a otro sitio: los anuncios son lo que conecta unas páginas con otras.
+      // Those leading to another site go first: ads are what connects pages to each other.
       const linked = pool.filter((item) => item.link);
       const ad = linked.find((item) => !used.has(item.id)) || pool.find((item) => !used.has(item.id)) ||
         (linked.length > 0 ? linked : pool)[Math.floor(Math.random() * (linked.length > 0 ? linked : pool).length)];
@@ -82,10 +82,10 @@
   const gameHeaders = { 'X-EyeFinder': '1' };
   const getGameJson = (path) => fetch(path, { cache: 'no-store', headers: gameHeaders }).then((response) => response.json());
 
-  // Lo que está pasando en el juego ahora mismo.
+  // What's happening in the game right now.
   const state = () => getGameJson('/_game/state.json');
 
-  // Valores compartidos con los mods y los scripts de CLEO. Siempre son texto.
+  // Values shared with mods and CLEO scripts. They're always text.
   const values = () => getGameJson('/_game/values.json').then((data) => data.values);
   const get = (key, fallback = null) => values().then((all) => (key in all ? all[key] : fallback));
 

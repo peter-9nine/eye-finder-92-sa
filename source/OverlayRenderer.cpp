@@ -77,7 +77,7 @@ void DrawRect(IDirect3DDevice9* device, float left, float top, float right, floa
 	device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, quad, sizeof(ColorVertex));
 }
 
-// Flecha clásica: un abanico de triángulos desde la punta.
+// Classic arrow: a fan of triangles from the tip.
 void DrawArrow(IDirect3DDevice9* device, float x, float y, D3DCOLOR color) {
 	const float points[][2] = { { 0, 0 }, { 0, 17 }, { 4, 13 }, { 7, 20 }, { 10, 19 }, { 7, 12 }, { 12, 12 } };
 	ColorVertex fan[7];
@@ -96,9 +96,9 @@ void DrawCursor(IDirect3DDevice9* device, float x, float y, ef::CursorKind curso
 		return;
 	}
 
-	// Por ahora la mano es la flecha en amarillo; los cursores definitivos llegarán con la interfaz.
+	// For now the hand is the arrow in yellow. The final cursors will come with the interface.
 	const D3DCOLOR fill = cursor == ef::CursorKind::Hand ? D3DCOLOR_XRGB(255, 220, 60) : D3DCOLOR_XRGB(255, 255, 255);
-	// El contorno son copias negras desplazadas: se ve sobre cualquier fondo.
+	// The outline is offset black copies, so it shows on any background.
 	for (int dy = -1; dy <= 1; ++dy) {
 		for (int dx = -1; dx <= 1; ++dx) {
 			if (dx != 0 || dy != 0) DrawArrow(device, x + dx, y + dy, D3DCOLOR_XRGB(0, 0, 0));
@@ -145,7 +145,7 @@ bool OverlayRenderer::Upload(IDirect3DDevice9* device, const uint8_t* pixels, ui
 }
 
 void OverlayRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float screenHeight, float cursorX, float cursorY, ef::CursorKind cursor, float blackness) {
-	// RenderWare guarda su propia copia del estado, así que hay que dejarlo todo como estaba.
+	// RenderWare keeps its own copy of the state, so everything must be left as it was.
 	IDirect3DStateBlock9* saved = nullptr;
 	if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved))) return;
 
@@ -155,7 +155,7 @@ void OverlayRenderer::Draw(IDirect3DDevice9* device, float screenWidth, float sc
 		DrawPage(device, texture_, screenWidth, screenHeight);
 	}
 	else {
-		// Fondo mientras arranca el helper.
+		// Background while the helper starts.
 		PrepareColorDraw(device);
 		DrawRect(device, 0, 0, screenWidth, screenHeight, D3DCOLOR_XRGB(0, 60, 120));
 	}

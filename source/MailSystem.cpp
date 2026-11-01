@@ -6,16 +6,16 @@
 
 namespace {
 
-// El juego también ve el botón, así que abrir el busca no puede ser una simple pulsación.
+// The game sees the button too, so opening the pager can't be a simple press.
 constexpr DWORD kPadPagerHoldMs = 500;
 
-// Los avisos no deben interrumpir escenas ni aparecer sobre el menú.
+// Notifications must not interrupt cutscenes or appear over the menu.
 bool GameCanShowNotifications() {
 	return !FrontEndMenuManager.m_bMenuActive && !TheCamera.m_bWideScreenOn && !CCutsceneMgr::ms_running;
 }
 
-// El juego copia el texto aquí solo si lo acepta. No sirve HelpMessageDisplayed: sigue en falso
-// hasta que el cuadro se dibuja, y por eso el aviso se repetía sin fin.
+// The game only copies the text here if it accepts it. HelpMessageDisplayed won't do: it stays false
+// until the box is drawn, which is why the message used to repeat forever.
 bool HelpMessageAccepted(const std::string& text) {
 	return std::strncmp(CHud::m_pHelpMessage, text.c_str(), 399) == 0;
 }
@@ -102,7 +102,7 @@ void MailSystem::OnGameLoaded() {
 		Log("Loaded mod data from " + path.filename().string());
 	}
 	else {
-		// Una partida de antes de instalar el mod, o un archivo dañado.
+		// A save from before the mod was installed, or a damaged file.
 		Log("No mod data for " + path.filename().string() + ": starting with an empty inbox");
 	}
 
@@ -113,7 +113,7 @@ void MailSystem::OnGameLoaded() {
 }
 
 void MailSystem::RunCleoScript(const std::string& path) {
-	// CLEO puede no estar instalado: se busca en cada uso y nunca se enlaza.
+	// CLEO may not be installed, so it's looked up on each use and never linked.
 	using CreateCustomScript = void*(__stdcall*)(void* fromThread, const char* filePath, int label);
 	const HMODULE cleo = GetModuleHandleA("CLEO.asi");
 	const auto create = cleo ? reinterpret_cast<CreateCustomScript>(GetProcAddress(cleo, "_CLEO_CreateCustomScript@12")) : nullptr;
@@ -122,7 +122,7 @@ void MailSystem::RunCleoScript(const std::string& path) {
 		return;
 	}
 
-	// Un archivo que falta se avisa aquí, antes de pedírselo a CLEO.
+	// A missing file is reported here, before asking CLEO for it.
 	std::error_code error;
 	const std::filesystem::path file(path);
 	const std::filesystem::path full = file.is_absolute() ? file : std::filesystem::path(L"cleo") / file;
@@ -131,7 +131,7 @@ void MailSystem::RunCleoScript(const std::string& path) {
 		return;
 	}
 
-	// Se llama solo desde Update, fuera del bucle de scripts del juego.
+	// Only called from Update, outside the game's script loop.
 	Log(std::string(create(nullptr, path.c_str(), 0) ? "Started CLEO script " : "CLEO refused to start script ") + path);
 }
 
@@ -145,7 +145,7 @@ void MailSystem::HandleApiRequests() {
 	for (api::Request& request : api::Drain()) {
 		switch (request.kind) {
 		case api::RequestKind::Email: {
-			// Un correo con respuesta solo llega una vez por partida.
+			// An email with replies only arrives once per saved game.
 			if (!request.replyKey.empty() && store_.KnowsReplyKey(request.replyKey)) break;
 
 			const std::string sender = request.from;
@@ -188,7 +188,7 @@ void MailSystem::HandleApiRequests() {
 void MailSystem::HandleBrowserOperations() {
 	bool changed = false;
 
-	// Antes que los scripts: una página puede guardar un valor y lanzar el script que lo lee.
+	// Before the scripts: a page can store a value and start the script that reads it.
 	std::string valueKey;
 	std::string valueText;
 	while (overlay_->TakeValueOp(valueKey, valueText)) {
@@ -213,7 +213,7 @@ void MailSystem::HandleBrowserOperations() {
 		}
 	}
 
-	// Un botón de un sitio local: solo llegan scripts de la carpeta de ese sitio.
+	// A button on a local site: only scripts from that site's folder arrive here.
 	std::string siteScript;
 	while (overlay_->TakeSiteScript(siteScript)) {
 		const size_t slash = siteScript.find('/');
@@ -231,19 +231,19 @@ void MailSystem::HandleBrowserOperations() {
 }
 
 void MailSystem::ShowNextText() {
-	// Si ya lo ha leído o borrado todo, no queda nada que anunciar.
+	// If everything has been read or deleted, there's nothing left to announce.
 	if (newMailToAnnounce_ > 0 && store_.UnreadCount() == 0) newMailToAnnounce_ = 0;
 	if (newMailToAnnounce_ == 0 && texts_.empty()) return;
 
-	// Un momento entre avisos, para que el juego llegue a mostrar el anterior.
+	// A moment between messages, so that the game gets to show the previous one.
 	if (GetTickCount() - lastTextShown_ < 1000) return;
 
-	// El cuadro de ayuda queda detrás del navegador, así que espera a que se cierre.
+	// The help box stays behind the browser, so it waits for it to close.
 	if (overlay_->IsOpen() || !GameCanShowNotifications() || CHud::HelpMessageDisplayed()) return;
 
 	std::string text;
 	if (newMailToAnnounce_ > 0) {
-		// Se cuentan todos los que hay sin leer: es lo que le importa al jugador.
+		// Counts all the unread ones, which is what matters to the player.
 		const int unread = (std::max)(store_.UnreadCount(), 1);
 		text = unread == 1 ? "You have 1 new email." : "You have " + std::to_string(unread) + " new emails.";
 	}
@@ -253,7 +253,7 @@ void MailSystem::ShowNextText() {
 
 	CHud::SetHelpMessage(text.c_str(), false, false, false);
 
-	// El juego rechaza el mensaje en algunos momentos: entonces se vuelve a intentar.
+	// The game refuses the message at times, so it's tried again.
 	if (!HelpMessageAccepted(text)) return;
 	lastTextShown_ = GetTickCount();
 	Log("Help box: " + text);
@@ -268,7 +268,7 @@ void MailSystem::ShowMemoryEntry() {
 		return;
 	}
 
-	// "Day 568, 13:51" no cabe junto a la posición.
+	// "Day 568, 13:51" doesn't fit next to the position.
 	const PagerEntry& entry = entries[entries.size() - 1 - memoryIndex_];
 	std::string when = entry.received;
 	if (when.rfind("Day ", 0) == 0) when = "D" + when.substr(4);
@@ -278,19 +278,19 @@ void MailSystem::ShowMemoryEntry() {
 	pager_.ShowFromMemory(entry.sender, entry.text, when + " " + std::to_string(memoryIndex_ + 1) + "/" + std::to_string(entries.size()));
 }
 
-// Lo llama el procedimiento de ventana, en el mismo hilo que el juego. Devuelve true si la tecla era del busca.
+// Called by the window procedure, on the game's thread. Returns true if the key belonged to the pager.
 bool MailSystem::HandleKey(unsigned int key, bool repeat) {
 	if (key == 0 || !GameCanShowNotifications()) return false;
 
 	if (key == keys_.pagerOpen) {
-		// Con el ordenador abierto, una letra o un número son para escribir.
+		// With the computer open, a letter or number is for typing.
 		const bool printable = (key >= '0' && key <= '9') || (key >= 'A' && key <= 'Z');
 		if (overlay_->IsOpen() && printable) return false;
 		if (!repeat) TogglePagerMemory();
 		return true;
 	}
 
-	// Las teclas de avance solo son del busca mientras está en pantalla.
+	// The browsing keys only belong to the pager while it's on screen.
 	if (!memoryOpen_ || !pager_.IsBusy()) return false;
 	if (key != keys_.pagerOlder && key != keys_.pagerNewer) return false;
 	if (!repeat) StepPagerMemory(key == keys_.pagerOlder);
@@ -314,13 +314,13 @@ void MailSystem::StepPagerMemory(bool older) {
 	if (older && memoryIndex_ + 1 < count) ++memoryIndex_;
 	else if (!older && memoryIndex_ > 0) --memoryIndex_;
 
-	// Aunque no haya más mensajes, seguir pulsando mantiene el busca abierto.
+	// Even with no more messages, pressing again keeps the pager up.
 	ShowMemoryEntry();
 }
 
-// Mantener la cruceta a la izquierda abre o cierra el busca. Con él en pantalla, izquierda y derecha lo recorren.
+// Holding D-pad left opens or closes the pager. With it on screen, left and right browse it.
 void MailSystem::UpdatePad() {
-	// La cruceta del teclado en pantalla no debe mover el busca.
+	// The on-screen keyboard's D-pad must not move the pager.
 	if (!GameCanShowNotifications() || overlay_->KeyboardOpen()) {
 		padHoldStart_ = 0;
 		return;
@@ -338,7 +338,7 @@ void MailSystem::UpdatePad() {
 	}
 
 	if (padHoldStart_ != 0 && GetTickCount() - padHoldStart_ >= kPadPagerHoldMs) {
-		// Una sola vez por pulsación: hay que soltar para volver a usarlo.
+		// Only once per press: it has to be released before using it again.
 		padHoldStart_ = 0;
 		TogglePagerMemory();
 	}
@@ -419,7 +419,7 @@ void MailSystem::Update() {
 		PublishGameState();
 	}
 
-	// Un script puede cambiar valores en cada fotograma: el disco no tiene por qué enterarse de todos.
+	// A script can change values every frame, and the disk doesn't need to hear about all of them.
 	if (now - lastFlush_ >= 250) {
 		lastFlush_ = now;
 		store_.FlushSession();
@@ -428,7 +428,7 @@ void MailSystem::Update() {
 
 void MailSystem::Draw() {
 	const DWORD now = GetTickCount();
-	// El tiempo del busca se detiene con el menú o tras un parón largo: el mensaje no se pierde.
+	// The pager's time stops with the menu or after a long stall, so the message isn't lost.
 	const DWORD elapsed = (std::min<DWORD>)(now - lastDraw_, 100);
 	lastDraw_ = now;
 

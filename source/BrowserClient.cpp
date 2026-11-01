@@ -28,7 +28,7 @@ bool BrowserClient::Start(const std::wstring& helperPath, const std::wstring& ur
 
 	void* view = MapViewOfFile(mapping_, FILE_MAP_ALL_ACCESS, 0, 0, size);
 	if (!view) {
-		// En un proceso de 32 bits esto falla si el espacio de direcciones está fragmentado.
+		// In a 32-bit process this fails if the address space is fragmented.
 		error = LastError("MapViewOfFile");
 		Stop();
 		return false;
@@ -51,7 +51,7 @@ bool BrowserClient::Start(const std::wstring& helperPath, const std::wstring& ur
 		return false;
 	}
 
-	// El helper y sus subprocesos mueren con el juego, incluso si este se cuelga.
+	// The helper and its subprocesses die with the game, even if it crashes.
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
 	limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 	SetInformationJobObject(job_, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
@@ -115,7 +115,7 @@ void BrowserClient::Send(const ef::Event& event) {
 
 	const uint32_t write = header_->ringWrite.load(std::memory_order_relaxed);
 	const uint32_t read = header_->ringRead.load(std::memory_order_acquire);
-	if (write - read >= ef::kRingSize) return;  // Nunca bloqueamos el juego: si está llena, se descarta.
+	if (write - read >= ef::kRingSize) return;  // Never block the game: if the ring is full, the event is dropped.
 
 	header_->ring[write % ef::kRingSize] = event;
 	header_->ringWrite.store(write + 1, std::memory_order_release);

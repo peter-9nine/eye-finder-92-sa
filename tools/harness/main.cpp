@@ -1,9 +1,9 @@
-// Prueba el helper, el protocolo, la interfaz y el renderizado sin el juego, en un proceso de 32 bits.
+// Tests the helper, the protocol, the interface and the rendering without the game, in a 32-bit process.
 //
 //   harness <helper.exe> <shell url> <output directory>
 //
-// Las coordenadas corresponden a ui/shell.html a 1280x720.
-// Con un d3d9.dll de DXVK junto al ejecutable, también prueba esa ruta.
+// The coordinates match ui/shell.html at 1280x720.
+// With a DXVK d3d9.dll next to the executable, it also tests that path.
 #include <windows.h>
 #include <d3d9.h>
 
@@ -28,7 +28,7 @@ namespace {
 constexpr int gWidth = 1280;
 constexpr int gHeight = 720;
 
-// Interfaz
+// Interface
 constexpr POINT kIconInternet = { 433, 320 };
 constexpr POINT kIconLogOff = { 831, 526 };
 constexpr POINT kBack = { 186, 51 };
@@ -51,17 +51,17 @@ constexpr POINT kZoomIn = { 1096, 703 };
 constexpr POINT kZoomOut = { 1020, 703 };
 constexpr POINT kReplyGood = { 700, 655 };
 
-// tests.html: el botón de CLEO
+// tests.html: the CLEO button
 constexpr POINT kRunCleo = { 290, 372 };
 constexpr POINT kDeleteMail = { 1072, 175 };
 
-// tests.html, a partir de la esquina del hueco de contenido
+// tests.html, from the corner of the content area
 constexpr POINT kClickMe = { 258, 204 };
 constexpr POINT kTextField = { 368, 260 };
 constexpr POINT kDropdown = { 286, 316 };
 constexpr POINT kDropdownThird = { 286, 400 };
 
-// Colores esperados en las capturas.
+// Colors expected in the captures.
 constexpr uint32_t kDesktopColor = 0x027676;
 constexpr uint32_t kDropdownHighlight = 0x1967D2;
 constexpr uint32_t kTitleBarColor = 0x073DA5;
@@ -89,7 +89,7 @@ float gCursorY = 40.0f;
 int gFailures = 0;
 std::vector<uint32_t> gLastShot;
 
-// Comprueba un píxel de la última captura: que pase la prueba no basta si lo dibujado está mal.
+// Checks a pixel of the last capture: a passing test isn't enough if what's drawn is wrong.
 void ExpectPixel(const char* what, POINT point, uint32_t expected) {
 	const uint32_t actual = gLastShot.empty() ? 0 : gLastShot[size_t(point.y) * gWidth + point.x] & 0xFFFFFF;
 	if (actual != expected) {
@@ -98,7 +98,7 @@ void ExpectPixel(const char* what, POINT point, uint32_t expected) {
 	}
 }
 
-// Devuelve false mientras no se pueda dibujar. Es lo que hace el plugin: soltar la textura y pedir un fotograma.
+// Returns false while it can't draw. It does what the plugin does: release the texture and ask for a frame.
 bool DeviceReady() {
 	const HRESULT state = gDevice->TestCooperativeLevel();
 	if (state == D3D_OK) return true;
@@ -151,9 +151,9 @@ void Run(int milliseconds) {
 	}
 }
 
-// Guarda lo que hay realmente en el búfer trasero, no lo que envió el helper.
+// Saves what's really in the back buffer, not what the helper sent.
 void Shot(const char* name) {
-	// Si se ha perdido el dispositivo, primero hay que recuperarlo y volver a dibujar.
+	// If the device was lost, it must first be recovered and drawn again.
 	for (int attempt = 0; attempt < 100 && gDevice->TestCooperativeLevel() != D3D_OK; ++attempt) Run(50);
 	if (gDeviceLosses > gDeviceLossesAtLastShot) {
 		gDeviceLossesAtLastShot = gDeviceLosses;
@@ -175,7 +175,7 @@ void Shot(const char* name) {
 				file.write(static_cast<const char*>(locked.pBits) + y * locked.Pitch, gWidth * 4);
 				std::memcpy(&gLastShot[size_t(y) * gWidth], static_cast<const char*>(locked.pBits) + y * locked.Pitch, gWidth * 4);
 			}
-			// El fondo de Clear es magenta: si sigue ahí, la interfaz no se ha dibujado.
+			// The Clear background is magenta: if it's still there, the interface wasn't drawn.
 			const uint32_t center = *reinterpret_cast<const uint32_t*>(static_cast<const char*>(locked.pBits) + (gHeight / 2) * locked.Pitch + (gWidth / 2) * 4);
 			ok = file.good() && (center & 0xFFFFFF) != 0xFF00FF;
 			copy->UnlockRect();
@@ -207,7 +207,7 @@ void TypeText(const char* text) {
 	}
 }
 
-// Lo que hace UpdateMouse cuando el clic viene del botón A del mando.
+// What UpdateMouse does when the click comes from the pad's A button.
 void PadClick(POINT point) {
 	gCursorX = float(point.x);
 	gCursorY = float(point.y);
@@ -245,7 +245,7 @@ void Expect(const char* what, bool ok) {
 	}
 }
 
-// Lo que el plugin hace en cada fotograma con las operaciones de la bandeja.
+// What the plugin does every frame with the inbox operations.
 void SyncMail() {
 	ef::MailOp operation;
 	bool changed = false;
@@ -272,7 +272,7 @@ void RunWithMail(int milliseconds) {
 }
 
 void TestApi() {
-	// Con el nombre real, como lo encuentra otro mod.
+	// With the real name, as another mod finds it.
 	Expect("API: not installed before loading", !eyefinder::IsInstalled() && eyefinder::SendEmail("a", "b", "c") == 0);
 
 	HMODULE module = LoadLibraryW(L"EyeFinder92SA.asi");
@@ -308,7 +308,7 @@ void TestApi() {
 	Expect("API: bad key refused", eyefinder::SetValue("bad key!", "x") == 0 && eyefinder::SetValue(nullptr, "x") == 0);
 	Expect("API: unread count", eyefinder::GetUnreadCount() == 0);
 
-	// Una cola llena rechaza, en lugar de crecer sin fin.
+	// A full queue refuses, instead of growing forever.
 	for (int i = 0; i < 400; ++i) eyefinder::Notify("flood");
 	Expect("API: queue is limited", pending() == 256);
 	Expect("API: refuses when full", eyefinder::Notify("flood") == 0);
@@ -324,7 +324,7 @@ void TestMailFiles() {
 	store.MarkRead(1);
 	Expect("files: save", store.SaveTo(folder / L"GTASAsf1.json"));
 
-	// Una partida distinta no toca la otra.
+	// One saved game doesn't touch the other.
 	MailStore other;
 	other.Add("Other", "Other", "Other", "Day 9, 09:00");
 	Expect("files: save second slot", other.SaveTo(folder / L"GTASAsf2.json"));
@@ -400,7 +400,7 @@ std::string StoredValue(const char* key) {
 void TestKeyboard() {
 	using Action = ef::PadKeyboardAction;
 
-	// keyboard-tests.html, a partir de la esquina del hueco de contenido (168, 102).
+	// keyboard-tests.html, from the corner of the content area (168, 102).
 	constexpr POINT kUser = { 268, 127 };
 	constexpr POINT kPass = { 268, 167 };
 	constexpr POINT kNotes = { 268, 207 };
@@ -423,7 +423,7 @@ void TestKeyboard() {
 	Expect("keyboard: a pad click on a field opens it", gClient.KeyboardOpen());
 	Shot("05b_keyboard");
 
-	// La primera tecla seleccionada es la q.
+	// The first selected key is q.
 	PadKey(Action::Press);
 	PadKey(Action::Press);
 	Run(200);
@@ -453,7 +453,7 @@ void TestKeyboard() {
 	Expect("keyboard: Go doesn't submit while another field is empty", StoredValue("keyboard.submits").empty());
 	Shot("05d_keyboard_applied");
 
-	// La casilla ya tiene texto: se sigue escribiendo al final, y ahora el formulario está completo.
+	// The field already has text: typing continues at the end, and now the form is complete.
 	PadClick(kPass);
 	PadKey(Action::Press);
 	Shot("05e_keyboard_password");
@@ -462,7 +462,7 @@ void TestKeyboard() {
 	Expect("keyboard: password written", StoredValue("keyboard.pass") == "q");
 	Expect("keyboard: Go submits a complete form", StoredValue("keyboard.submits") == "1");
 
-	// Varias líneas: Enter es una línea nueva, y Go no envía nada.
+	// Multiple lines: Enter is a new line, and Go submits nothing.
 	PadClick(kNotes);
 	Expect("keyboard: opens on a textarea", gClient.KeyboardOpen());
 	TypeText("a");
@@ -487,23 +487,23 @@ void TestKeyboard() {
 	Expect("keyboard: editable content written", StoredValue("keyboard.rich") == "rich");
 
 	PadClick(kNumber);
-	PadKey(Action::Press);  // Una q no vale en un número.
+	PadKey(Action::Press);  // A q isn't valid in a number.
 	Expect("keyboard: a number field refuses letters", gClient.KeyboardOpen());
 	TypeText("42");
 	PadKey(Action::Go);
 	RunWithMail(500);
 	Expect("keyboard: number written", StoredValue("keyboard.number") == "42");
 
-	// Un clic de ratón fuera del teclado es salir sin cambiar nada.
+	// A mouse click outside the keyboard leaves without changing anything.
 	PadClick(kUser);
 	Expect("keyboard: opens for the outside click", gClient.KeyboardOpen());
 	PadKey(Action::Press);
-	Click({ 800, 200 });  // Por encima del teclado.
+	Click({ 800, 200 });  // Above the keyboard.
 	RunWithMail(300);
 	Expect("keyboard: clicking outside closes it", !gClient.KeyboardOpen());
 	Expect("keyboard: clicking outside changes nothing", StoredValue("keyboard.user") == "qwE ");
 
-	// La barra de direcciones: Close deja la dirección, y Go navega.
+	// The address bar: Close leaves the address, and Go navigates.
 	PadClick(kAddress);
 	Expect("keyboard: opens on the address bar", gClient.KeyboardOpen());
 	Shot("05g_keyboard_address");
@@ -521,7 +521,7 @@ void TestKeyboard() {
 	Expect("keyboard: Go on the address bar closes it", !gClient.KeyboardOpen());
 	Shot("05i_keyboard_navigated");
 
-	// Tras navegar, el foco y el clic siguen funcionando: los usa la prueba siguiente.
+	// After navigating, focus and clicks still work: the next test uses them.
 	PadClick(kTextField);
 	Expect("keyboard: opens on the new page", gClient.KeyboardOpen());
 	PadKey(Action::Close);
@@ -565,7 +565,7 @@ int wmain(int argc, wchar_t** argv) {
 	windowClass.hInstance = GetModuleHandleW(nullptr);
 	windowClass.lpszClassName = L"EyeFinderHarness";
 	RegisterClassW(&windowClass);
-	// Fuera de la pantalla para no molestar.
+	// Off screen, so as not to get in the way.
 	HWND window = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, windowClass.lpszClassName, L"harness", WS_POPUP, -gWidth - 200, 0, gWidth, gHeight,
 		nullptr, nullptr, windowClass.hInstance, nullptr);
 	ShowWindow(window, SW_SHOWNOACTIVATE);
@@ -632,12 +632,12 @@ int wmain(int argc, wchar_t** argv) {
 	Shot("01_desktop");
 	ExpectPixel("desktop", { 1200, 400 }, kDesktopColor);
 
-	// Escritorio -> navegador con su página de inicio.
+	// Desktop -> browser with its home page.
 	Click(kIconInternet);
 	Run(1200);
 	Shot("02_home");
 
-	// Cada visita baraja los sitios y los anuncios.
+	// Each visit shuffles the sites and ads.
 	{
 		const std::vector<uint32_t> first = gLastShot;
 		bool changed = false;
@@ -651,7 +651,7 @@ int wmain(int argc, wchar_t** argv) {
 		Expect("home page: the order changes between visits", changed);
 	}
 
-	// Un sitio público, con un anuncio de la carpeta compartida.
+	// A public site, with an ad from the shared folder.
 	GoTo("www.binco.sa", 1200);
 	Shot("02c_public_site_with_ad");
 	Click(kPublicSiteAd);
@@ -659,7 +659,7 @@ int wmain(int argc, wchar_t** argv) {
 	Shot("02d_after_clicking_ad");
 	Expect("ad: clicking leaves for another site", (gLastShot[size_t(150) * gWidth + 300] & 0xFFFFFF) != 0x1A4F9C);
 
-	// Direcciones extra para revisar a mano: EF_HARNESS_VISIT=a;b;c
+	// Extra addresses to check by hand: EF_HARNESS_VISIT=a;b;c
 	if (const char* visits = getenv("EF_HARNESS_VISIT")) {
 		std::string list = visits;
 		int number = 0;
@@ -679,7 +679,7 @@ int wmain(int argc, wchar_t** argv) {
 		}
 	}
 
-	// Barra de direcciones -> sitio local, con entrada en la página.
+	// Address bar -> local site, with input on the page.
 	GoTo("www.eyefinder.info/tests.html", 1200);
 	Click(kClickMe);
 	Run(600);
@@ -701,11 +701,11 @@ int wmain(int argc, wchar_t** argv) {
 	Measure("idle", 3000, false);
 	Measure("scrolling", 5000, true);
 
-	// Segunda pestaña -> internet real, sin perder la primera.
+	// Second tab -> real internet, without losing the first.
 	Click(kNewTabWithOneTab);
 	Run(1000);
 
-	// Empieza en local: una dirección real pregunta, y negarse no la carga.
+	// It starts in local mode: a real address asks, and refusing doesn't load it.
 	const char* const kRealSite = "https://en.wikipedia.org/wiki/Grand_Theft_Auto:_San_Andreas";
 	GoTo(kRealSite, 800);
 	Shot("05b_internet_alert");
@@ -725,7 +725,7 @@ int wmain(int argc, wchar_t** argv) {
 	Run(500);
 	Shot("08_back_on_second_tab");
 
-	// Atrás y adelante, en la pestaña 2: Wikipedia <- inicio.
+	// Back and forward, in tab 2: Wikipedia <- home.
 	Click(kBack);
 	Run(1000);
 	Shot("09_after_back");
@@ -733,7 +733,7 @@ int wmain(int argc, wchar_t** argv) {
 	Run(2500);
 	Shot("10_after_forward");
 
-	// Atajos.
+	// Shortcuts.
 	Control('T');
 	Run(800);
 	Shot("11_ctrl_t");
@@ -741,13 +741,13 @@ int wmain(int argc, wchar_t** argv) {
 	Run(400);
 	Shot("12_ctrl_w");
 
-	// Peor caso: una página que se repinta sin parar, en su pestaña.
+	// Worst case: a page that repaints nonstop, in its own tab.
 	Click(kTab1);
 	GoTo("www.eyefinder.info/tests.html?animate", 1000);
 	Measure("animated page", 5000, false);
 	Shot("12a_internet_mode_network_reached");
 
-	// Volver a local no pregunta y saca a las pestañas de las webs reales. Volver a internet pregunta otra vez.
+	// Going back to local doesn't ask, and takes tabs off real sites. Going back to the internet asks again.
 	Click(kTab2);
 	Run(300);
 	Click(kNetMode);
@@ -762,7 +762,7 @@ int wmain(int argc, wchar_t** argv) {
 	GoTo("www.eyefinder.info/tests.html", 3000);
 	Shot("12d_local_page_network_blocked");
 
-	// Minimizar y restaurar conservan las pestañas.
+	// Minimizing and restoring keep the tabs.
 	Click(kMinimize);
 	Run(400);
 	Shot("13_minimized");
@@ -772,7 +772,7 @@ int wmain(int argc, wchar_t** argv) {
 	Shot("14_restored");
 	ExpectPixel("restored window", { 600, 15 }, kTitleBarColor);
 
-	// Correo: abrir, leer, borrar y recibir uno nuevo con la página abierta.
+	// Mail: open, read, delete and receive a new one with the page open.
 	Click(kMailButton);
 	RunWithMail(1800);
 	Shot("15_mail_list");
@@ -789,7 +789,7 @@ int wmain(int argc, wchar_t** argv) {
 	RunWithMail(2200);
 	Shot("17_mail_new_arrived");
 
-	// Respuestas: el correo nuevo trae dos, y solo se puede elegir una vez.
+	// Replies: the new email has two, and only one choice can be made.
 	const uint32_t replyMail = gStore.AddWithReplies("Ryder", "You in?", "Meet me at the spot.", "Day 5, 21:00",
 		"harness_key", "I'm in, homie.", "Forget it, fool.", "good.cs", "");
 	gStore.FlushSession();
@@ -815,7 +815,7 @@ int wmain(int argc, wchar_t** argv) {
 		Expect("replies: survive deleting", gStore.Remove(replyMail) && gStore.KnowsReplyKey("harness_key") && gStore.Replies().at("harness_key") == 1);
 	}
 
-	// Un botón en una web local pide un script, y solo el de su carpeta.
+	// A button on a local site requests a script, and only one from its folder.
 	GoTo("www.eyefinder.info/tests.html", 1500);
 	Click(kRunCleo);
 	Run(700);
@@ -825,7 +825,7 @@ int wmain(int argc, wchar_t** argv) {
 		Expect("web button: script requested", gClient.TakeSiteScript(siteScript) && siteScript == "www.eyefinder.info/hello");
 	}
 
-	// Lo que promete la FAQ: un archivo nuevo en un sitio existente carga sin reiniciar, y F5 recoge los cambios.
+	// What the FAQ promises: a new file in an existing site loads without restarting, and F5 picks up changes.
 	{
 		const std::filesystem::path page = std::filesystem::path(helper).parent_path() / L"sites" / L"www.eyefinder.info" / L"f5test.html";
 		const auto writePage = [&page](const char* color) {
@@ -848,13 +848,13 @@ int wmain(int argc, wchar_t** argv) {
 		Shot("17g_media_formats");
 	}
 
-	// Valores y estado del juego, en los dos sentidos.
+	// Values and game state, in both directions.
 	gStore.SetValue("tests.pong", "hello from the game");
 	RunWithMail(1800);
 	Expect("values: the page's value reached the game", gStore.Values().count("tests.ping") && gStore.Values().at("tests.ping") == "hello from the page");
 	Shot("17h_state_and_values");
 
-	// Zoom: los botones y el teclado.
+	// Zoom: the buttons and the keyboard.
 	{
 		const std::vector<uint32_t> before = gLastShot;
 		Click(kZoomIn);
@@ -877,7 +877,7 @@ int wmain(int argc, wchar_t** argv) {
 		Shot("17k_ctrl_wheel_back_to_100");
 	}
 
-	// El busca, sobre la página. Tiene que acabar solo.
+	// The pager, over the page. It has to finish by itself.
 	gPager.Show("Big Smoke", "I'll have two number 9s, a number 9 large, a number 6 with extra dip, a number 7, two number 45s");
 	PagerRenderer::PlayBeep();
 	Run(1600);
@@ -893,7 +893,7 @@ int wmain(int argc, wchar_t** argv) {
 	Shot("20_pager_no_sender");
 	while (gPager.IsBusy() && GetTickCount() - pagerStart < 60000) Run(100);
 
-	// La memoria: sube, cambia de mensaje sin volver a subir, sigue pasando páginas sola, y se guarda.
+	// The memory: it rises, changes message without rising again, keeps paging by itself, and is saved.
 	gPager.ShowFromMemory("Cesar", "Meet me at the garage in Little Mexico. Bring the car and come alone, ese.", "D568 13:51 1/2");
 	Run(600);
 	Shot("21_pager_memory");
@@ -906,7 +906,7 @@ int wmain(int argc, wchar_t** argv) {
 	Run(500);
 	Expect("pager: closing puts it away", !gPager.IsBusy());
 
-	// Ocultar y mostrar (menú de pausa, F8) producen un fotograma nuevo.
+	// Hiding and showing (pause menu, F8) produce a new frame.
 	gClient.Send({ ef::EventType::Hide });
 	Run(300);
 	uint32_t paints = gClient.PaintCount();
@@ -919,7 +919,7 @@ int wmain(int argc, wchar_t** argv) {
 		++gFailures;
 	}
 
-	// Log Off debe pedir la vuelta al juego.
+	// Log Off must ask to return to the game.
 	if (gClient.TakeCloseRequest()) {
 		puts("FAIL: close was requested too early");
 		++gFailures;

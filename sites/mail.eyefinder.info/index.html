@@ -16,7 +16,7 @@
 
   #panes { flex: 1; min-height: 0; display: flex; gap: 6px; padding: 6px; }
 
-  /* La lista: quién, de qué y un adelanto, para decidir sin abrir el correo. */
+  /* The list: who, what about and a preview, to decide without opening the email. */
   #list { flex: 0 0 37%; min-width: 0; overflow-y: auto; background: #fff; border: 2px inset #fff; }
   .mail { position: relative; padding: 8px 10px 8px 24px; border-bottom: 1px solid #ccc; cursor: pointer; }
   .mail:hover { background: #e4ecfa; }
@@ -33,7 +33,7 @@
   .needsAnswer { margin-left: 4px; padding: 0 4px; background: #d00000; color: #fff; font-size: 11px; font-weight: bold; }
   #empty { padding: 36px 16px; text-align: center; color: #555; }
 
-  /* El correo abierto */
+  /* The open email */
   #reader { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #fff; border: 2px inset #fff; }
   #nothing { margin: auto; padding: 16px; text-align: center; color: #555; }
   #details { flex: none; padding: 10px 12px; background: #e8e8e8; border-bottom: 1px solid #808080; }
@@ -90,17 +90,17 @@
 <script>
   const byId = (id) => document.getElementById(id);
 
-  // La cabecera propia impide que otra web llame a esta API: sin CORS, el navegador lo bloquea.
+  // The custom header stops other sites calling this API: without CORS, the browser blocks it.
   const call = (path, method = 'GET') =>
     fetch(path, { method, cache: 'no-store', headers: { 'X-EyeFinder': '1' } });
 
   let mails = [];
   let selectedId = null;
   let onlyUnread = false;
-  let typing = null;  // { mailId, answer, text, shown, status, timer } mientras CJ escribe
+  let typing = null;  // { mailId, answer, text, shown, status, timer } while CJ is typing
   let audio = null;
 
-  // El tecleo es un sonido sintetizado, sin archivos: un golpe muy corto de ruido.
+  // The typing is a synthesized sound, with no files: a very short burst of noise.
   function playKey() {
     try {
       audio = audio || new AudioContext();
@@ -116,11 +116,11 @@
       source.start();
     }
     catch (error) {
-      // Sin sonido, el texto se sigue escribiendo.
+      // Without sound, the text keeps being typed.
     }
   }
 
-  // El texto siempre entra como texto: un correo de otro mod no puede inyectar nada en la página.
+  // Text always goes in as text: an email from another mod can't inject anything into the page.
   function fillBody(text) {
     const body = byId('body');
     body.textContent = '';
@@ -170,7 +170,7 @@
     const scroll = byId('list').scrollTop;
     rows.textContent = '';
 
-    // Lo más reciente, arriba. Con el filtro, lo que se está leyendo no desaparece de golpe.
+    // Newest first. With the filter on, what's being read doesn't suddenly disappear.
     const visible = [...mails].reverse().filter((mail) => !onlyUnread || !mail.read || mail.id === selectedId);
     for (const mail of visible) rows.append(buildRow(mail));
     byId('list').scrollTop = scroll;
@@ -252,7 +252,7 @@
     renderReader();
   }
 
-  // CJ escribe la respuesta y luego se envía. Solo entonces cuenta como respondido.
+  // CJ types the answer and then it's sent. Only then does it count as answered.
   function answer(value) {
     const mail = mails.find((item) => item.id === selectedId);
     if (!mail || mail.answer || typing) return;
@@ -277,12 +277,12 @@
     if (typing.text[typing.shown - 1] !== ' ') playKey();
     renderReader();
 
-    // Un ritmo humano, y sin hacer esperar demasiado con las respuestas largas.
+    // A human pace, without too long a wait on long answers.
     const pace = Math.min(70, 3500 / typing.text.length);
     typing.timer = setTimeout(typeNextKey, pace * (0.6 + Math.random() * 0.8));
   }
 
-  // Si el jugador cambia de correo mientras CJ escribe, la respuesta se envía igualmente.
+  // If the player switches email while CJ is typing, the answer is still sent.
   function finishTyping() {
     if (!typing) return;
 
@@ -307,7 +307,7 @@
   byId('showAll').onclick = () => { onlyUnread = false; render(); };
   byId('showUnread').onclick = () => { onlyUnread = true; render(); };
 
-  // Al borrar se abre el siguiente, para poder seguir limpiando la bandeja.
+  // Deleting opens the next one, so that the player can keep clearing the inbox.
   byId('remove').onclick = () => {
     if (selectedId === null) return;
     finishTyping();
@@ -336,7 +336,7 @@
       const data = await response.json();
       const fresh = data.mail.mails;
 
-      // Una operación puede estar en camino: lo que el jugador acaba de hacer manda.
+      // An operation may be on its way: what the player has just done wins.
       const known = new Map(mails.map((mail) => [mail.id, mail]));
       for (const mail of fresh) {
         const old = known.get(mail.id);
@@ -356,13 +356,13 @@
         renderReader();
       }
       else if (dateNow !== dateBefore && !typing) {
-        // La fecha real llega del juego justo después de enviar.
+        // The real date comes from the game right after sending.
         renderReader();
         byId('body').scrollTop = scroll;
       }
     }
     catch (error) {
-      // El archivo se puede estar sustituyendo justo ahora: se reintenta en la siguiente vuelta.
+      // The file may be being replaced right now, so it tries again next time round.
     }
   }
 

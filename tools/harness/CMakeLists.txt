@@ -20,14 +20,14 @@ target_include_directories(EyeFinderHarness PRIVATE "${ROOT}/include" "${ROOT}/s
 target_compile_definitions(EyeFinderHarness PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(EyeFinderHarness PRIVATE d3d9)
 
-# Un doble de la API con el nombre real: lo que un mod ve, sin necesitar el juego.
+# An API double with the real name: what a mod sees, without needing the game.
 add_library(ApiDouble SHARED "${ROOT}/source/Api.cpp")
 set_target_properties(ApiDouble PROPERTIES OUTPUT_NAME "EyeFinder92SA" SUFFIX ".asi")
 target_include_directories(ApiDouble PRIVATE "${ROOT}/include")
 target_compile_definitions(ApiDouble PRIVATE NOMINMAX EF_API_TEST)
 add_dependencies(EyeFinderHarness ApiDouble)
 
-# El mod de ejemplo.
+# The example mod.
 add_library(EyeFinderApiDemo SHARED "${ROOT}/examples/ApiDemo/main.cpp")
 set_target_properties(EyeFinderApiDemo PROPERTIES SUFFIX ".asi")
 target_include_directories(EyeFinderApiDemo PRIVATE "${ROOT}/api")

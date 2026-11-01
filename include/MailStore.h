@@ -1,5 +1,5 @@
 #pragma once
-// La bandeja de entrada y su archivo. No depende del juego, así que el arnés también la usa.
+// The inbox and its file. It doesn't depend on the game, so the harness uses it too.
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -14,13 +14,13 @@ struct Mail {
 	std::string received;
 	bool read = false;
 
-	// Las dos respuestas que ofrece quien envía el correo. Sin ellas, no se puede responder.
+	// The two answers offered by the email's sender. Without them, it can't be answered.
 	std::string replyKey;
 	std::string goodText;
 	std::string badText;
 	std::string goodScript;
 	std::string badScript;
-	int answer = 0;  // 0 sin responder, 1 buena, 2 mala
+	int answer = 0;  // 0 unanswered, 1 good, 2 bad
 	std::string answeredAt;
 };
 
@@ -32,7 +32,7 @@ struct PagerEntry {
 
 class MailStore {
 public:
-	// El archivo de sesión refleja siempre la partida en curso; el helper lo lee de ahí.
+	// The session file always reflects the current game, and the helper reads it from there.
 	void SetSessionPath(std::filesystem::path path) { sessionPath_ = std::move(path); }
 
 	void Clear();
@@ -40,17 +40,17 @@ public:
 	uint32_t AddWithReplies(std::string from, std::string subject, std::string body, std::string received,
 		std::string replyKey, std::string goodText, std::string badText, std::string goodScript, std::string badScript);
 
-	// Devuelve true solo la primera vez: una respuesta no se puede cambiar. Si tiene script, lo deja en script.
+	// Returns true only the first time, because an answer can't change. Any script is left in script.
 	bool Answer(uint32_t id, int answer, std::string& key, std::string& script, std::string answeredAt = {});
 	bool KnowsReplyKey(const std::string& key) const { return replies_.count(key) != 0; }
 	const std::map<std::string, int>& Replies() const { return replies_; }
 	bool MarkRead(uint32_t id);
 
-	// La memoria del busca, de más antiguo a más reciente.
+	// The pager's memory, from oldest to newest.
 	void AddPagerEntry(std::string sender, std::string text, std::string received);
 	const std::vector<PagerEntry>& PagerEntries() const { return pagerEntries_; }
 
-	// Valores compartidos con mods y páginas: se guardan con la partida, como el correo.
+	// Values shared with mods and pages: they're saved with the game, like the mail.
 	void SetValue(const std::string& key, const std::string& value);
 	const std::map<std::string, std::string>& Values() const { return values_; }
 	bool Remove(uint32_t id);
@@ -58,18 +58,18 @@ public:
 	int UnreadCount() const;
 	const std::vector<Mail>& Mails() const { return mails_; }
 
-	// Guarda en el archivo de sesión si hubo cambios. Si Windows lo tiene ocupado, se reintenta en la siguiente llamada.
+	// Writes the session file if anything changed. If Windows has it busy, it tries again on the next call.
 	void FlushSession();
 
-	// Partida guardada: una copia completa por cada archivo de partida del juego.
+	// Saved game: a complete copy for each of the game's save files.
 	bool SaveTo(const std::filesystem::path& path) const;
-	// Un archivo dañado se aparta y no se carga: nunca debe impedir jugar.
+	// A damaged file is set aside and not loaded: it must never stop anyone playing.
 	bool LoadFrom(const std::filesystem::path& path);
 
 private:
 	std::filesystem::path sessionPath_;
 	std::vector<Mail> mails_;
-	// Sobrevive a borrar el correo: el mod que lo envió sigue pudiendo preguntar.
+	// Survives deleting the email, so the mod that sent it can still ask.
 	std::map<std::string, int> replies_;
 	std::map<std::string, std::string> values_;
 	std::vector<PagerEntry> pagerEntries_;

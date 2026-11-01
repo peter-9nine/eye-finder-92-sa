@@ -1,4 +1,4 @@
-# Compila el helper (64 bits), el plugin (32 bits) y el arnés de pruebas (32 bits).
+# Builds the helper (64-bit), the plugin (32-bit) and the test harness (32-bit).
 param([string]$Configuration = 'Release')
 
 $ErrorActionPreference = 'Stop'

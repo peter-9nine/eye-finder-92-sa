@@ -5,8 +5,8 @@ project(EyeFinderBrowser)
 set(CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cef")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CEF_ROOT}/cmake")
 
-# El sandbox de Chromium está desactivado en el prototipo. Hay que activarlo antes de publicar
-# con acceso real a internet.
+# Chromium's sandbox is off in the prototype. It must be turned on before shipping
+# with real internet access.
 set(USE_SANDBOX OFF)
 
 find_package(CEF REQUIRED)
@@ -25,7 +25,7 @@ target_link_libraries(${CEF_TARGET} libcef_lib libcef_dll_wrapper ${CEF_STANDARD
 COPY_FILES("${CEF_TARGET}" "${CEF_BINARY_FILES}" "${CEF_BINARY_DIR}" "${CEF_TARGET_OUT_DIR}")
 COPY_FILES("${CEF_TARGET}" "${CEF_RESOURCE_FILES}" "${CEF_RESOURCE_DIR}" "${CEF_TARGET_OUT_DIR}")
 
-# Se vacían antes de copiar: un archivo viejo llegaría a modloader, y este ejecuta cualquier .cs que encuentre.
+# Emptied before copying: an old file would reach modloader, which runs any .cs it finds.
 add_custom_command(TARGET ${CEF_TARGET} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E rm -rf "${CEF_TARGET_OUT_DIR}/ui" "${CEF_TARGET_OUT_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/sites" "${CMAKE_CURRENT_BINARY_DIR}/ads"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../public" "${CMAKE_CURRENT_BINARY_DIR}"

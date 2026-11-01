@@ -1,8 +1,8 @@
-// Helper de 64 bits: ejecuta Chromium sin ventana y publica los fotogramas en memoria compartida.
+// 64-bit helper: runs Chromium without a window and publishes its frames in shared memory.
 //
-// Hay una vista de interfaz a pantalla completa (ui/shell.html: escritorio y ventana del navegador)
-// y una vista por pestaña. La pestaña activa se compone sobre el hueco que le indica la interfaz.
-// Todo el estado de este archivo vive en el hilo UI de CEF, salvo la cola de eventos.
+// There's one full-screen interface view (ui/shell.html: the desktop and browser window)
+// and one view per tab. The active tab is composited into the space the interface reports.
+// All the state in this file lives on CEF's UI thread, except the event ring.
 #include <windows.h>
 
 #include <algorithm>
@@ -45,10 +45,10 @@ int gUnreadMail = 0;
 constexpr char kMailDomain[] = "mail.eyefinder.info";
 constexpr char kHomeUrl[] = "https://www.eyefinder.info/";
 
-// El navegador arranca solo con los sitios locales. El internet real solo se activa desde la interfaz,
-// y esta pide confirmación cada vez. Se consulta desde varios hilos.
+// The browser starts with local sites only. The real internet is only enabled from the interface,
+// which asks for confirmation every time. It's read from several threads.
 std::atomic<bool> gInternetEnabled{ false };
-std::set<std::string> gLocalDomains;  // Solo se escribe al arrancar, antes de crear navegadores.
+std::set<std::string> gLocalDomains;  // Only written at startup, before any browser exists.
 
 bool IsAllowedUrl(const std::string& url) {
 	if (gInternetEnabled.load(std::memory_order_relaxed)) return true;
@@ -59,7 +59,7 @@ bool IsAllowedUrl(const std::string& url) {
 	std::string scheme = CefString(&parts.scheme).ToString();
 	for (char& c : scheme) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-	// data:, blob: y about: no salen a la red.
+	// data:, blob: and about: don't go out to the network.
 	if (scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss" && scheme != "ftp") return true;
 
 	std::string host = CefString(&parts.host).ToString();
@@ -87,11 +87,11 @@ View* gKeyboard = nullptr;
 
 uint32_t gWriterSlot = 0;
 
-// Teclado en pantalla: la interfaz lo dibuja, y aquí se compone encima de la pestaña.
+// On-screen keyboard: the interface draws it, and it's composited over the tab here.
 bool gKeyboardOpen = false;
 CefRect gKeyboardRect;
-View* gKeyboardReturn = nullptr;       // Quién recupera el teclado físico al cerrarlo.
-CefRefPtr<CefFrame> gKeyboardFrame;    // El marco con la casilla que se está editando.
+View* gKeyboardReturn = nullptr;       // Who gets the physical keyboard back when it closes.
+CefRefPtr<CefFrame> gKeyboardFrame;    // The frame holding the field being edited.
 bool gFieldQueryPending = false;
 bool gFieldApplyPending = false;
 
@@ -115,7 +115,7 @@ CefRefPtr<CefValue> StringValue(const std::string& text) {
 	return value;
 }
 
-// --- Sitios locales: sites/<dominio>/ se sirve como si fuera ese dominio ---
+// --- Local sites: sites/<domain>/ is served as if it were that domain ---
 class TextHolder : public CefBaseRefCounted {
 public:
 	explicit TextHolder(std::string text) : text(std::move(text)) {}
@@ -133,8 +133,8 @@ CefRefPtr<CefResourceHandler> JsonResponse(int status, std::string text) {
 	return new CefStreamResourceHandler(status, status == 200 ? "OK" : "Error", "application/json", headers, CefStreamReader::CreateForHandler(reader));
 }
 
-// La bandeja del correo, solo para su propio sitio. Las demás webs no pueden ni leerla ni tocarla:
-// la cabecera propia obliga al navegador a pedir permiso (CORS), y aquí nunca se concede.
+// The inbox, for its own site only. Other sites can neither read nor change it:
+// the custom header makes the browser ask for permission (CORS), which is never granted here.
 CefRefPtr<CefResourceHandler> HandleMailApi(const std::string& path, CefRefPtr<CefRequest> request) {
 	if (request->GetHeaderByName("X-EyeFinder").empty()) return JsonResponse(403, "{}");
 
@@ -151,7 +151,7 @@ CefRefPtr<CefResourceHandler> HandleMailApi(const std::string& path, CefRefPtr<C
 	ef::MailOpKind kind;
 	std::string idText;
 	if (path.rfind("/api/reply/", 0) == 0) {
-		// /api/reply/<id>/<1 buena o 2 mala>
+		// /api/reply/<id>/<1 good or 2 bad>
 		const size_t slash = path.rfind('/');
 		const std::string answer = path.substr(slash + 1);
 		if (answer != "1" && answer != "2") return JsonResponse(400, "{}");
@@ -185,8 +185,8 @@ fs::path ExecutableDirectory() {
 	return fs::path(buffer).parent_path();
 }
 
-// Dos sitios para los sitios: browser\\sites es del mod y se sustituye al actualizarlo. La carpeta
-// sites junto al .asi es pública: quien quiera añade ahí lo suyo y nada la toca.
+// Two places for sites: browser\\sites belongs to the mod and is replaced when it updates. The sites
+// folder next to the .asi is public: anyone can add to it, and nothing else touches it.
 fs::path SystemSitesFolder() { return ExecutableDirectory() / L"sites"; }
 fs::path PublicSitesFolder() { return ExecutableDirectory().parent_path() / L"sites"; }
 fs::path SystemAdsFolder() { return ExecutableDirectory() / L"ads"; }
@@ -199,7 +199,7 @@ std::string ReadTextFile(const fs::path& path) {
 	return contents.str();
 }
 
-// Un JSON roto de un sitio o un anuncio nunca debe romper la lista: se trata como si no estuviera.
+// Broken JSON in a site or ad must never break the list: it's treated as if it weren't there.
 CefRefPtr<CefDictionaryValue> ReadJsonObject(const fs::path& path) {
 	std::error_code error;
 	if (!fs::is_regular_file(path, error)) return nullptr;
@@ -255,7 +255,7 @@ std::string BuildGameStateJson() {
 	return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
 }
 
-// Solo los valores: el archivo de la partida también tiene el correo, que no es para cualquier sitio.
+// Only the values: the game's file also holds the mail, which isn't for every site.
 std::string BuildValuesJson() {
 	CefRefPtr<CefDictionaryValue> session = ReadJsonObject(fs::path(gMailPath));
 	CefRefPtr<CefDictionaryValue> result = CefDictionaryValue::Create();
@@ -282,7 +282,7 @@ std::string BuildSitesJson() {
 		const std::string domain = entry.path().filename().string();
 		if (domain.find('.') == std::string::npos) continue;
 
-		// Un sitio del mod con el mismo nombre tiene prioridad, así que este no está disponible.
+		// A mod site with the same name takes priority, so this one isn't available.
 		std::error_code systemError;
 		if (fs::exists(SystemSitesFolder() / entry.path().filename(), systemError)) continue;
 
@@ -319,7 +319,7 @@ std::string BuildAdsJson() {
 			const std::string image = StringField(details, "image");
 			if (!IsSimpleFileName(id) || !IsSimpleFileName(image)) continue;
 
-			// Un enlace solo puede ser una dirección web: nada de javascript:.
+			// A link can only be a web address: no javascript:.
 			std::string link = StringField(details, "link");
 			if (link.rfind("http://", 0) != 0 && link.rfind("https://", 0) != 0) link.clear();
 
@@ -341,7 +341,7 @@ CefRefPtr<CefResourceHandler> ServeFile(const fs::path& file, const std::string&
 	return new CefStreamResourceHandler(mime, stream);
 }
 
-// "<carpeta del anuncio>/<archivo>", sin poder salir de las carpetas de anuncios.
+// "<ad folder>/<file>", with no way out of the ad folders.
 CefRefPtr<CefResourceHandler> ServeAdImage(const std::string& path) {
 	const size_t slash = path.find('/');
 	if (slash == std::string::npos) return JsonResponse(404, "{}");
@@ -364,10 +364,10 @@ CefRefPtr<CefResourceHandler> ServeAdImage(const std::string& path) {
 	return JsonResponse(404, "{}");
 }
 
-// Lo que un sitio local puede pedirle al juego. Las webs reales no llegan aquí: estos dominios solo
-// se sirven desde el disco, y la cabecera propia impide que otro origen haga la petición.
+// What a local site can ask of the game. Real sites can't get here: these domains are only
+// served from disk, and the custom header stops another origin from making the request.
 CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs::path& root, const std::string& path, CefRefPtr<CefRequest> request) {
-	// Información pública: la lista de sitios y los anuncios se leen en cada petición.
+	// Public information: the site list and ads are read on every request.
 	if (path == "/_game/sa.js") return ServeFile(ExecutableDirectory() / L"ui" / L"sa.js", "text/javascript");
 	if (path == "/_game/sites.json") return JsonResponse(200, BuildSitesJson());
 	if (path == "/_game/ads.json") return JsonResponse(200, BuildAdsJson());
@@ -398,7 +398,7 @@ CefRefPtr<CefResourceHandler> HandleGameApi(const std::string& domain, const fs:
 	}
 
 	if (path.rfind("/_game/script/", 0) == 0 && request->GetMethod().ToString() == "POST") {
-		// Solo nombres simples y solo de la carpeta scripts del propio sitio.
+		// Only simple names, and only from the site's own scripts folder.
 		const std::string name = path.substr(14);
 		const bool valid = !name.empty() && name.size() <= 64 &&
 			name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == std::string::npos;
@@ -428,7 +428,7 @@ public:
 		CefURLParts parts;
 		if (!CefParseURL(request->GetURL(), parts)) return nullptr;
 
-		// Un sitio no puede salir de su carpeta.
+		// A site can't leave its folder.
 		const std::string escaped = CefString(&parts.path).ToString();
 		if (isMailSite_ && escaped.rfind("/api/", 0) == 0) return HandleMailApi(escaped, request);
 		if (escaped.rfind("/_game/", 0) == 0) return HandleGameApi(root_.filename().string(), root_, escaped, request);
@@ -467,7 +467,7 @@ private:
 	IMPLEMENT_REFCOUNTING(SiteHandlerFactory);
 };
 
-// --- Órdenes de la interfaz ---
+// --- Commands from the interface ---
 void OpenTab(int id, const std::string& url);
 void CloseTab(int id);
 void ActivateTab(int id);
@@ -567,7 +567,7 @@ public:
 		Changed();
 	}
 
-	// --- Ciclo de vida ---
+	// --- Lifetime ---
 	void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
 		browser_ = browser;
 		++gOpenBrowsers;
@@ -596,7 +596,7 @@ public:
 		if (--gOpenBrowsers == 0 && gClosingAll) SetEvent(gAllClosed);
 	}
 
-	// Las ventanas emergentes se abren como pestañas nuevas.
+	// Popups open as new tabs.
 	bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString& targetUrl, const CefString&,
 		CefLifeSpanHandler::WindowOpenDisposition, bool, const CefPopupFeatures&, CefWindowInfo&, CefRefPtr<CefClient>&, CefBrowserSettings&,
 		CefRefPtr<CefDictionaryValue>&, bool*) override {
@@ -608,22 +608,22 @@ public:
 		return true;
 	}
 
-	// --- Navegación ---
+	// --- Navigation ---
 	bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool userGesture, bool) override {
 		const std::string url = request->GetURL().ToString();
 
 		if (IsShell()) {
-			// La interfaz tiene acceso a las órdenes del helper: nunca puede salir de su página.
+			// The interface can give the helper commands, so it can never leave its page.
 			if (url.rfind(gShellUrl, 0) != 0) return true;
 			router_->OnBeforeBrowse(browser, frame);
 			return false;
 		}
 
-		// Sin sandbox, una página no debe poder abrir archivos del disco.
+		// Without a sandbox, a page must not be able to open files from disk.
 		if (url.rfind("file:", 0) == 0) return true;
 
 		if (!IsAllowedUrl(url)) {
-			// Solo se pregunta si lo ha pedido el jugador: una página no puede insistir sola.
+			// Only ask if the player requested it: a page can't keep insisting by itself.
 			if (frame->IsMain() && userGesture) AskForInternet(url, false);
 			return true;
 		}
@@ -634,7 +634,7 @@ public:
 		return IsShell() ? nullptr : this;
 	}
 
-	// Cada recurso, no solo las páginas: un sitio local no debe poder cargar nada de internet.
+	// Every resource, not just pages: a local site must not be able to load anything from the internet.
 	CefResourceRequestHandler::ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, CefRefPtr<CefCallback>) override {
 		return IsAllowedUrl(request->GetURL().ToString()) ? RV_CONTINUE : RV_CANCEL;
 	}
@@ -643,7 +643,7 @@ public:
 		if (router_) router_->OnRenderProcessTerminated(browser);
 	}
 
-	// --- Estado que muestra la interfaz ---
+	// --- State shown by the interface ---
 	void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString& url) override {
 		if (!frame->IsMain() || IsShell()) return;
 		url_ = url.ToString();
@@ -675,7 +675,7 @@ public:
 		return true;
 	}
 
-	// El zoom es de la pestaña y sobrevive a navegar. Chromium lo guarda por dominio, así que se vuelve a aplicar.
+	// Zoom belongs to the tab and survives navigation. Chromium stores it per domain, so it's applied again.
 	void ApplyZoom() {
 		if (Host()) Host()->SetZoomLevel(std::log(zoomPercent_ / 100.0) / std::log(1.2));
 	}
@@ -722,7 +722,7 @@ public:
 		url_ = url.ToString();
 	}
 
-	// --- Sin menú contextual ni diálogos nativos de momento: no hay ventana donde mostrarlos ---
+	// --- No context menu or native dialogs for now: there's no window to show them in ---
 	void OnBeforeContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefContextMenuParams>, CefRefPtr<CefMenuModel> model) override {
 		model->Clear();
 	}
@@ -804,9 +804,9 @@ void CallShell(const std::string& function, CefRefPtr<CefValue> argument) {
 	gShell->Browser()->GetMainFrame()->ExecuteJavaScript("ef." + function + "(" + json + ")", gShellUrl, 0);
 }
 
-// La segunda barrera, a nivel de red: en modo local, todo sale por un proxy que no existe. Hace falta
-// porque los WebSockets no pasan por OnBeforeResourceLoad. Los sitios locales no usan la red, así que
-// siguen funcionando. <-loopback> incluye también a localhost, que Chromium excluye de los proxies.
+// The second barrier, at network level: in local mode, everything goes through a proxy that doesn't exist.
+// It's needed because WebSockets skip OnBeforeResourceLoad. Local sites don't use the network, so they
+// keep working. <-loopback> also covers localhost, which Chromium excludes from proxies.
 void ApplyNetworkPolicy(bool internet) {
 	CefRefPtr<CefDictionaryValue> proxy = CefDictionaryValue::Create();
 	if (internet) {
@@ -827,7 +827,7 @@ void ApplyNetworkPolicy(bool internet) {
 		LOG(ERROR) << "Could not set the network policy: " << error.ToString();
 	}
 
-	// WebRTC puede enviar UDP saltandose el proxy, y con el revelar la IP real de quien juega.
+	// WebRTC can send UDP around the proxy, and reveal the player's real IP address that way.
 	CefRefPtr<CefValue> webrtc = CefValue::Create();
 	webrtc->SetString(internet ? "default_public_interface_only" : "disable_non_proxied_udp");
 	if (!context->SetPreference("webrtc.ip_handling_policy", webrtc, error)) {
@@ -874,7 +874,7 @@ void ComposeAndPublish() {
 		}
 	}
 
-	// El teclado queda sobre la pestaña, que sigue viéndose por encima de él.
+	// The keyboard goes over the tab, which stays visible above it.
 	if (gKeyboardOpen) {
 		const int left = std::max(gKeyboardRect.x, 0);
 		const int top = std::max(gKeyboardRect.y, 0);
@@ -904,7 +904,7 @@ void SetKeyboardTarget(View* view) {
 	if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(true);
 }
 
-// La pestaña activa solo es visible con la ventana abierta y el navegador en pantalla.
+// The active tab is only visible with the window open and the browser on screen.
 void ApplyTabVisibility() {
 	for (auto& [id, tab] : gTabs) {
 		if (!tab->Host()) continue;
@@ -966,12 +966,12 @@ void SetLayout(int x, int y, int width, int height, bool visible) {
 	ComposeAndPublish();
 }
 
-// La página solo cambia al pulsar Go, y solo la casilla donde hizo clic el mando.
+// The page only changes on Go, and only the field the pad clicked.
 void SetKeyboardOpen(bool open, const CefRect& rect) {
 	if (open) {
 		gKeyboardRect = rect;
 		if (!gKeyboardOpen) {
-			// La pestaña conserva su foco, para que la página no vea que se ha salido de la casilla.
+			// The tab keeps its focus, so that the page doesn't see the field being left.
 			gKeyboardReturn = gKeyboard == gShell.get() ? nullptr : gKeyboard;
 			gKeyboard = gShell.get();
 			if (gShell->Host()) gShell->Host()->SetFocus(true);
@@ -997,7 +997,7 @@ void ApplyKeyboardText(const std::string& text) {
 	gKeyboardFrame->SendProcessMessage(PID_RENDERER, request);
 }
 
-// Solo responde a una pregunta nuestra, tras un clic del mando. Lo demás viene de la página: es solo texto.
+// Only answers a question of ours, after a pad click. The rest comes from the page, so it's only text.
 void OnFieldInfo(CefRefPtr<CefFrame> frame, const std::string& json) {
 	if (!gFieldQueryPending) return;
 	gFieldQueryPending = false;
@@ -1024,7 +1024,7 @@ void OnFieldApplied(CefRefPtr<CefBrowser> browser, bool submit) {
 	gFieldApplyPending = false;
 	if (!submit || !browser->GetHost()) return;
 
-	// Un Enter de verdad: la página lo trata como si lo hubiera pulsado el jugador.
+	// A real Enter: the page treats it as if the player had pressed it.
 	CefKeyEvent key;
 	key.windows_key_code = VK_RETURN;
 	key.type = KEYEVENT_RAWKEYDOWN;
@@ -1037,7 +1037,7 @@ void OnFieldApplied(CefRefPtr<CefBrowser> browser, bool submit) {
 	browser->GetHost()->SendKeyEvent(key);
 }
 
-// Se pregunta un momento después del clic, para que Chromium ya haya movido el foco.
+// Asked a moment after the click, so that Chromium has already moved the focus.
 void QueryFocusedField(int tabId) {
 	if (gKeyboardOpen) return;
 
@@ -1059,7 +1059,7 @@ void QueryFocusedField(int tabId) {
 }
 
 bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int64_t, const CefString& request, bool, CefRefPtr<Callback> callback) {
-	// Solo la interfaz, nunca una página web, puede dar órdenes.
+	// Only the interface, never a web page, can give commands.
 	if (!gShell || !gShell->Browser() || !browser->IsSame(gShell->Browser()) || !frame->IsMain() ||
 		frame->GetURL().ToString().rfind(gShellUrl, 0) != 0) {
 		return false;
@@ -1115,7 +1115,7 @@ bool ShellQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 		gInternetEnabled.store(enabled, std::memory_order_relaxed);
 		ApplyNetworkPolicy(enabled);
 
-		// Al volver a local, ninguna pestaña se queda en una web real ni con una conexión abierta.
+		// On going back to local, no tab stays on a real site or keeps a connection open.
 		if (!enabled) {
 			for (auto& [id, tab] : gTabs) {
 				CefRefPtr<CefBrowser> tabBrowser = tab->Browser();
@@ -1155,7 +1155,7 @@ void CreateShell() {
 	CefBrowserHost::CreateBrowser(window, gShell, gShellUrl, settings, nullptr, nullptr);
 }
 
-// Se ejecutan dentro de la página, en el proceso de renderizado, para leer y escribir la casilla con el foco.
+// These run inside the page, in the render process, to read and write the focused field.
 constexpr char kActiveFieldScript[] = R"js(
 function efActiveField() {
   let element = document.activeElement;
@@ -1182,9 +1182,9 @@ constexpr char kQueryFieldScript[] = R"js((function () {
   });
 })())js";
 
-// insertText es como escribir de verdad: las páginas que escuchan cada cambio también se enteran.
-// Devuelve 'submit' si la casilla debe recibir Enter: no en una con varias líneas, ni en un formulario
-// al que aún le falta otra casilla, como un usuario sin su contraseña.
+// insertText is like really typing: pages that listen for every change notice it too.
+// Returns 'submit' if the field should get Enter: not a multi-line one, and not in a form
+// that's still missing another field, like a username without its password.
 constexpr char kApplyFieldScript[] = R"js((function (text) {
   const element = efActiveField();
   if (!element) return '';
@@ -1221,7 +1221,7 @@ public:
 
 	void OnBeforeCommandLineProcessing(const CefString& processType, CefRefPtr<CefCommandLine> commandLine) override {
 		if (processType.empty()) {
-			// Prototipo: todo por software, para entregar los fotogramas a la CPU de forma predecible.
+			// Prototype: everything in software, to hand frames to the CPU predictably.
 			commandLine->AppendSwitch("disable-gpu");
 			commandLine->AppendSwitch("disable-gpu-compositing");
 		}
@@ -1233,13 +1233,13 @@ public:
 		CreateShell();
 	}
 
-	// --- Proceso de renderizado ---
+	// --- Render process ---
 	void OnWebKitInitialized() override {
 		router_ = CefMessageRouterRendererSide::Create(CefMessageRouterConfig());
 	}
 
 	void OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) override {
-		// window.cefQuery solo existe en la interfaz, que se carga desde el disco. Las webs no lo ven.
+		// window.cefQuery only exists in the interface, which loads from disk. Websites can't see it.
 		if (router_ && frame->GetURL().ToString().rfind("file:", 0) == 0) router_->OnContextCreated(browser, frame, context);
 	}
 
@@ -1272,7 +1272,7 @@ public:
 	}
 
 private:
-	// Todo va dentro de una función: efActiveField no se queda en la página.
+	// Everything goes inside a function, so that efActiveField doesn't stay in the page.
 	static std::string RunInFrame(CefRefPtr<CefFrame> frame, const std::string& expression) {
 		CefRefPtr<CefV8Context> context = frame->GetV8Context();
 		CefRefPtr<CefV8Value> result;
@@ -1283,7 +1283,7 @@ private:
 	}
 
 	static void RegisterSites() {
-		// Los del mod van los últimos: si hay dos con el mismo nombre, mandan ellos.
+		// The mod's go last: if two share a name, they win.
 		RegisterSitesIn(PublicSitesFolder(), false);
 		RegisterSitesIn(SystemSitesFolder(), true);
 	}
@@ -1297,7 +1297,7 @@ private:
 			for (char& c : lowered) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 			gLocalDomains.insert(lowered);
 
-			// El correo solo es del sitio del mod: uno público con ese nombre no tendría acceso.
+			// Mail belongs only to the mod's site: a public one with that name gets no access.
 			CefRefPtr<SiteHandlerFactory> factory = new SiteHandlerFactory(entry.path(), isSystem && lowered == kMailDomain);
 			CefRegisterSchemeHandlerFactory("https", lowered, factory);
 			CefRegisterSchemeHandlerFactory("http", lowered, factory);
@@ -1309,7 +1309,7 @@ private:
 	IMPLEMENT_REFCOUNTING(App);
 };
 
-// --- Entrada ---
+// --- Input ---
 View* HitTest(int x, int y) {
 	if (gKeyboardOpen && gKeyboardRect.Contains(x, y)) return gShell.get();
 	if (gContentVisible && ActiveTabView() && x >= gContentRect.x && y >= gContentRect.y &&
@@ -1334,7 +1334,7 @@ void UpdateHover(View* target, const ef::Event& event) {
 	PublishCursor();
 }
 
-// Devuelve true si el atajo era del navegador y no debe llegar a la página.
+// Returns true if the shortcut was the browser's and must not reach the page.
 bool HandleShortcut(const ef::Event& event) {
 	View* tab = ActiveTabView();
 	CefRefPtr<CefBrowser> page = tab ? tab->Browser() : nullptr;
@@ -1357,7 +1357,7 @@ bool HandleShortcut(const ef::Event& event) {
 
 	if (!control) return false;
 
-	// Ctrl con +, - o 0, también los del teclado numérico.
+	// Ctrl with +, - or 0, including those on the numeric keypad.
 	if (tab && gContentVisible) {
 		if (event.a == VK_OEM_PLUS || event.a == VK_ADD) {
 			tab->ChangeZoom(1);
@@ -1406,14 +1406,14 @@ void HandleEvent(const ef::Event& event) {
 
 	case ef::EventType::MouseDown: {
 		padClick = event.a == 0 && event.b == 1;
-		// Un clic fuera del teclado en pantalla es salir de él, sin cambiar nada.
+		// A click outside the on-screen keyboard leaves it, without changing anything.
 		if (gKeyboardOpen && !gKeyboardRect.Contains(event.x, event.y)) CallShell("keyboardCancel", StringValue(""));
 
 		View* target = HitTest(event.x, event.y);
 		UpdateHover(target, event);
 		gCaptured = target;
 		SetKeyboardTarget(target);
-		// Al navegar, Chromium puede cambiar el widget interno y este nace sin foco: sin él no se abren las listas.
+		// Navigating can replace Chromium's internal widget, which starts unfocused, and dropdowns won't open without focus.
 		if (target && target->Host()) target->Host()->SetFocus(true);
 
 		const DWORD now = GetTickCount();
@@ -1441,7 +1441,7 @@ void HandleEvent(const ef::Event& event) {
 
 	case ef::EventType::Wheel: {
 		View* target = HitTest(event.x, event.y);
-		// Ctrl y rueda sobre una página: zoom.
+		// Ctrl and the wheel over a page: zoom.
 		if ((event.modifiers & ef::kModControl) && target && !target->IsShell()) {
 			target->ChangeZoom(event.b > 0 ? 1 : -1);
 			break;
@@ -1486,7 +1486,7 @@ void HandleEvent(const ef::Event& event) {
 		break;
 
 	case ef::EventType::Hide:
-		// Con el juego delante, las páginas no deben seguir sonando.
+		// With the game in front, pages must not keep playing sound.
 		gOverlayVisible = false;
 		if (gKeyboard && gKeyboard->Host()) gKeyboard->Host()->SetFocus(false);
 		if (gShell->Host()) gShell->Host()->WasHidden(true);
@@ -1533,7 +1533,7 @@ void CloseEverything() {
 }
 
 void PumpEvents(HANDLE wake, HANDLE parent) {
-	// Esperamos a la interfaz sin perder de vista al juego.
+	// Wait for the interface without losing sight of the game.
 	HANDLE startWaits[] = { gShellReady, parent };
 	if (WaitForMultipleObjects(parent ? 2 : 1, startWaits, FALSE, INFINITE) != WAIT_OBJECT_0) {
 		SetEvent(gQuit);
@@ -1577,7 +1577,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
 	CefMainArgs args(instance);
 	CefRefPtr<App> app(new App());
 
-	// Los subprocesos de Chromium (renderer, utilidades) terminan aquí.
+	// Chromium's subprocesses (renderer, utilities) end up here.
 	const int subprocess = CefExecuteProcess(args, app, nullptr);
 	if (subprocess >= 0) return subprocess;
 
