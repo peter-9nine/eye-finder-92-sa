@@ -19,6 +19,8 @@ tools\package.ps1   # creates dist\EyeFinder92SA and dist\EyeFinder92SA.zip
 
 It explains itself and asks first, showing the real download size from the server and the free space on the disk. It then downloads with progress, checks the SHA-1, unpacks only `Release`, `Resources` and `CREDITS.html`, and moves the files into `browser`, leaving out `.lib` and `.pdb` files. It always removes its temporary folder, `browser\_cef_install`.
 
+It unpacks with its own C# code, compiled by `Add-Type`, and not with Windows' `tar.exe`. Many Windows 10 builds have a `tar.exe` without bzip2 support, which fails with code 1 unless a separate `bzip2` program is installed, so a developer's newer Windows won't show the problem. PowerShell 5.1 only compiles C# 5, and reads the script as ANSI, so keep that code to old syntax and the file to ASCII.
+
 As a last check it runs `EyeFinderBrowser.exe` with no arguments. The helper exits with code 2 if it could load CEF, which proves that the files really work. Keep that exit code if you change how the helper starts.
 
 To test it without answering the question, run it with `-Yes`.

@@ -16,6 +16,7 @@ Keep this list current: remove what gets fixed, and add what you find.
 
 ## Limitations
 
+- **`tools\fetch-cef.ps1` needs a `tar.exe` with bzip2 support,** which many Windows 10 builds don't have, so building from source there needs a `bzip2` program on the `PATH`. Players aren't affected, because `Install CEF.bat` has its own unpacker.
 - **The controller can't close the browser directly.** L1 opens it at a computer, but closing means clicking Log Off.
 - **Controller buttons depend on GInput's controls set.** Buttons are read from `CPad`'s fields, so a controls set that moves actions between fields can change which physical button does what. This hasn't been checked for every set.
 - **The game also sees controller buttons outside the browser.** Holding D-pad left to open the pager can answer a conversation, and L1 keeps its normal effect.
